@@ -1,5 +1,8 @@
 # See https://help.github.com/articles/ignoring-files/ for more about ignoring files.
 
+# downloaded reference copy of the original site (not part of the app)
+/_ref
+
 # dependencies
 /node_modules
 /.pnp
@@ -30,8 +33,15 @@ yarn-debug.log*
 yarn-error.log*
 .pnpm-debug.log*
 
-# env files (can opt-in for committing if needed)
-.env*
+# ============================================================
+# SEGREDOS / VARIÁVEIS DE AMBIENTE — NUNCA COMMITAR
+# (chaves do Supabase, service_role, etc.)
+# ============================================================
+.env
+.env.*
+.env*.local
+*.env
+.env.local
 
 # vercel
 .vercel
