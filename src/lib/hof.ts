@@ -1,8 +1,10 @@
 import raw from "@/data/hall-of-fame.json";
+import { asPosition, type Position } from "@/lib/teams";
 
 export type HofPlayer = {
   id?: string;
   name: string;
+  position: Position | null; // posição natural (opcional)
   titles: number;
   runnerUps: number;
   mvp: number;
@@ -18,7 +20,7 @@ export type HofPlayer = {
   points: number;
 };
 
-export type StatKey = Exclude<keyof HofPlayer, "id" | "name" | "points">;
+export type StatKey = Exclude<keyof HofPlayer, "id" | "name" | "points" | "position">;
 
 /** Single source of truth: app field <-> DB column <-> scoring weight. */
 export const STAT_FIELDS: { key: StatKey; col: string; label: string; weight: number }[] = [
@@ -63,22 +65,29 @@ export function computePoints(p: Partial<Record<StatKey, number>>) {
 
 /** Map a Supabase row (snake_case) to a HofPlayer. */
 export function fromRow(r: Record<string, unknown>): HofPlayer {
-  const p = { id: r.id as string, name: String(r.name) } as HofPlayer;
+  const p = {
+    id: r.id as string,
+    name: String(r.name),
+    position: asPosition(r.position),
+  } as HofPlayer;
   for (const f of STAT_FIELDS) p[f.key] = Number(r[f.col]) || 0;
   p.points = r.points != null ? Number(r.points) : computePoints(p);
   return p;
 }
 
 /** Map a HofPlayer to a Supabase row (snake_case), excluding generated/id columns. */
-export function toRow(p: HofPlayer): Record<string, string | number> {
-  const r: Record<string, string | number> = { name: p.name.trim() };
+export function toRow(p: HofPlayer): Record<string, string | number | null> {
+  const r: Record<string, string | number | null> = {
+    name: p.name.trim(),
+    position: p.position ?? null,
+  };
   for (const f of STAT_FIELDS) r[f.col] = Number(p[f.key]) || 0;
   return r;
 }
 
 /** Empty player for the "create" form. */
 export function emptyPlayer(): HofPlayer {
-  const p = { name: "", points: 0 } as HofPlayer;
+  const p = { name: "", position: null, points: 0 } as HofPlayer;
   for (const f of STAT_FIELDS) p[f.key] = 0;
   return p;
 }
@@ -87,7 +96,11 @@ export function emptyPlayer(): HofPlayer {
 export const fallbackPlayers: HofPlayer[] = (
   raw.players as Record<string, unknown>[]
 ).map((p) => {
-  const o = { name: String(p.name), points: Number(p.points) || 0 } as HofPlayer;
+  const o = {
+    name: String(p.name),
+    position: asPosition(p.position),
+    points: Number(p.points) || 0,
+  } as HofPlayer;
   for (const f of STAT_FIELDS) o[f.key] = Number(p[f.key]) || 0;
   return o;
 });

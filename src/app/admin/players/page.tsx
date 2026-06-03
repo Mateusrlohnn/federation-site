@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useState } from "react";
 import { createClient } from "@/lib/supabase/client";
 import { STAT_FIELDS, computePoints, emptyPlayer, fromRow, toRow, avatarUrl, type HofPlayer } from "@/lib/hof";
+import { POSITIONS, type Position } from "@/lib/teams";
 
 export default function AdminPlayersPage() {
   const [players, setPlayers] = useState<HofPlayer[]>([]);
@@ -137,6 +138,23 @@ export default function AdminPlayersPage() {
                     onChange={(e) => setDraft({ ...draft, name: e.target.value })}
                     className="rounded-md bg-panel p-2 text-sm text-white focus:outline-none focus:ring-1 focus:ring-gold/50"
                   />
+                </label>
+                <label className="flex w-40 flex-col gap-1 text-xs">
+                  Posição natural
+                  <select
+                    value={draft.position ?? ""}
+                    onChange={(e) =>
+                      setDraft({ ...draft, position: (e.target.value || null) as Position | null })
+                    }
+                    className="rounded-md bg-panel p-2 text-sm text-white focus:outline-none focus:ring-1 focus:ring-gold/50"
+                  >
+                    <option value="">Sem posição</option>
+                    {POSITIONS.map((pos) => (
+                      <option key={pos.key} value={pos.key}>
+                        {pos.label} ({pos.sigla})
+                      </option>
+                    ))}
+                  </select>
                 </label>
               </div>
 

@@ -4,7 +4,15 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import { createClient } from "@/lib/supabase/client";
 import Icon from "@/components/ui/Icon";
 import ImageUpload from "@/components/ui/ImageUpload";
-import { TEAM_FIELDS, emptyTeam, teamFromRow, teamToRow, type Team } from "@/lib/teams";
+import {
+  TEAM_FIELDS,
+  POSITIONS,
+  emptyTeam,
+  teamFromRow,
+  teamToRow,
+  type Team,
+  type Position,
+} from "@/lib/teams";
 
 type PlayerLite = { id: string; name: string };
 
@@ -21,7 +29,10 @@ export default function AdminTeamsPage() {
 
   const load = useCallback(async () => {
     const [t, p] = await Promise.all([
-      supabase.from("teams").select("*, team_players(player_id)").order("titles", { ascending: false }),
+      supabase
+        .from("teams")
+        .select("*, team_players(player_id, position, active)")
+        .order("titles", { ascending: false }),
       supabase.from("players").select("id, name").order("name"),
     ]);
     if (!t.error && t.data) setTeams(t.data.map(teamFromRow));
@@ -38,12 +49,29 @@ export default function AdminTeamsPage() {
     return m;
   }, [allPlayers]);
 
-  function togglePlayer(id: string) {
+  function addPlayer(id: string) {
+    if (!draft || draft.roster.some((m) => m.playerId === id)) return;
+    setDraft({ ...draft, roster: [...draft.roster, { playerId: id, position: null, active: true }] });
+  }
+
+  function removePlayer(id: string) {
     if (!draft) return;
-    const has = draft.playerIds.includes(id);
+    setDraft({ ...draft, roster: draft.roster.filter((m) => m.playerId !== id) });
+  }
+
+  function setPosition(id: string, position: Position | null) {
+    if (!draft) return;
     setDraft({
       ...draft,
-      playerIds: has ? draft.playerIds.filter((x) => x !== id) : [...draft.playerIds, id],
+      roster: draft.roster.map((m) => (m.playerId === id ? { ...m, position } : m)),
+    });
+  }
+
+  function setActive(id: string, active: boolean) {
+    if (!draft) return;
+    setDraft({
+      ...draft,
+      roster: draft.roster.map((m) => (m.playerId === id ? { ...m, active } : m)),
     });
   }
 
@@ -74,12 +102,17 @@ export default function AdminTeamsPage() {
       teamId = data.id as string;
     }
 
-    // sincroniza o elenco (apaga e regrava)
+    // sincroniza o elenco (apaga e regrava) — mantém posição e status ativo/ex
     await supabase.from("team_players").delete().eq("team_id", teamId);
-    if (draft.playerIds.length) {
-      const { error } = await supabase
-        .from("team_players")
-        .insert(draft.playerIds.map((pid) => ({ team_id: teamId, player_id: pid })));
+    if (draft.roster.length) {
+      const { error } = await supabase.from("team_players").insert(
+        draft.roster.map((m) => ({
+          team_id: teamId,
+          player_id: m.playerId,
+          position: m.position,
+          active: m.active,
+        })),
+      );
       if (error) {
         setBusy(false);
         return setErr(error.message);
@@ -165,7 +198,9 @@ export default function AdminTeamsPage() {
                     )}
                   </span>
                   <span className="flex-1 truncate">{t.name}</span>
-                  <span className="text-xs text-faint">{t.playerIds.length} jog.</span>
+                  <span className="text-xs text-faint">
+                    {t.roster.filter((m) => m.active).length} jog.
+                  </span>
                 </button>
               </li>
             ))}
@@ -218,22 +253,70 @@ export default function AdminTeamsPage() {
               {/* ELENCO */}
               <div className="border-t border-white/5 pt-3">
                 <div className="mb-2 flex items-center justify-between">
-                  <span className="text-sm font-bold">Elenco ({draft.playerIds.length})</span>
+                  <span className="text-sm font-bold">
+                    Elenco ({draft.roster.filter((m) => m.active).length} ativos
+                    {draft.roster.some((m) => !m.active) &&
+                      `, ${draft.roster.filter((m) => !m.active).length} ex`}
+                    )
+                  </span>
                 </div>
-                {draft.playerIds.length > 0 && (
-                  <div className="mb-2 flex flex-wrap gap-1.5">
-                    {draft.playerIds.map((id) => (
-                      <button
-                        key={id}
-                        onClick={() => togglePlayer(id)}
-                        className="flex items-center gap-1 rounded-md bg-gold px-2 py-0.5 text-xs font-medium text-[#1a1a1e]"
-                        title="Remover do elenco"
+
+                {/* Lista de membros: posição + status Ativo/Ex + remover */}
+                {draft.roster.length > 0 && (
+                  <ul className="mb-3 flex flex-col gap-1.5">
+                    {draft.roster.map((m) => (
+                      <li
+                        key={m.playerId}
+                        className="flex flex-wrap items-center gap-2 rounded-md bg-panel px-2 py-1.5"
                       >
-                        {nameById.get(id) ?? id} ✕
-                      </button>
+                        <span className="min-w-0 flex-1 truncate text-sm font-medium">
+                          {nameById.get(m.playerId) ?? m.playerId}
+                        </span>
+
+                        {/* Posição */}
+                        <select
+                          value={m.position ?? ""}
+                          onChange={(e) =>
+                            setPosition(m.playerId, (e.target.value || null) as Position | null)
+                          }
+                          className="rounded bg-base p-1 text-xs text-white focus:outline-none focus:ring-1 focus:ring-gold/50"
+                        >
+                          <option value="">Sem posição</option>
+                          {POSITIONS.map((pos) => (
+                            <option key={pos.key} value={pos.key}>
+                              {pos.label} ({pos.sigla})
+                            </option>
+                          ))}
+                        </select>
+
+                        {/* Status Ativo/Ex */}
+                        <button
+                          type="button"
+                          onClick={() => setActive(m.playerId, !m.active)}
+                          className={`rounded px-2 py-1 text-[11px] font-bold ${
+                            m.active
+                              ? "bg-win/20 text-win"
+                              : "bg-faint/20 text-faint"
+                          }`}
+                          title="Alternar entre Ativo e Ex-jogador"
+                        >
+                          {m.active ? "Ativo" : "Ex"}
+                        </button>
+
+                        {/* Remover */}
+                        <button
+                          type="button"
+                          onClick={() => removePlayer(m.playerId)}
+                          className="rounded px-1.5 py-1 text-xs text-loss hover:bg-loss/10"
+                          title="Remover do elenco (apaga o histórico deste jogador)"
+                        >
+                          ✕
+                        </button>
+                      </li>
                     ))}
-                  </div>
+                  </ul>
                 )}
+
                 <input
                   type="text"
                   value={rosterQ}
@@ -243,11 +326,11 @@ export default function AdminTeamsPage() {
                 />
                 <ul className="flex max-h-[200px] flex-col gap-0.5 overflow-y-auto rounded-md bg-panel p-1 text-sm">
                   {filteredPlayers.slice(0, 60).map((p) => {
-                    const sel = draft.playerIds.includes(p.id);
+                    const sel = draft.roster.some((m) => m.playerId === p.id);
                     return (
                       <li key={p.id}>
                         <button
-                          onClick={() => togglePlayer(p.id)}
+                          onClick={() => (sel ? removePlayer(p.id) : addPlayer(p.id))}
                           className={`flex w-full items-center justify-between rounded px-2 py-1 text-left hover:bg-base ${
                             sel ? "text-gold" : ""
                           }`}

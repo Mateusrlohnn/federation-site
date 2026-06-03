@@ -30,6 +30,13 @@ body {
   font-size: 14px;
 }
 
+/* Tailwind v4 não aplica mais cursor:pointer em botões — restaura para
+   sinalizar elementos clicáveis (links, botões, opções de seleção). */
+button:not(:disabled),
+[role="button"]:not([aria-disabled="true"]) {
+  cursor: pointer;
+}
+
 /* FontAwesome inline SVG sizing (mirrors @fortawesome base styles) */
 .svg-inline--fa {
   display: inline-block;
@@ -47,4 +54,52 @@ body {
 }
 .text-shadow-lg {
   text-shadow: 0 4px 8px rgba(0, 0, 0, 0.45), 0 2px 4px rgba(0, 0, 0, 0.35);
+}
+
+/* Entrada suave do modal de perfil (evita o "seco") */
+@keyframes overlay-in {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+@keyframes modal-in {
+  from {
+    opacity: 0;
+    transform: translateY(14px) scale(0.96);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+}
+/* Reveal escalonado do conteúdo interno do card */
+@keyframes content-in {
+  from {
+    opacity: 0;
+    transform: translateY(10px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+.animate-overlay-in {
+  animation: overlay-in 200ms ease-out;
+}
+.animate-modal-in {
+  animation: modal-in 260ms cubic-bezier(0.16, 1, 0.3, 1);
+}
+.animate-content-in {
+  animation: content-in 360ms cubic-bezier(0.16, 1, 0.3, 1) both;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .animate-overlay-in,
+  .animate-modal-in,
+  .animate-content-in {
+    animation: none;
+  }
 }

@@ -7,6 +7,7 @@
 create table if not exists public.players (
   id                  uuid primary key default gen_random_uuid(),
   name                text not null unique,
+  position            text check (position in ('GK', 'ZAG', 'MID', 'ATK')), -- posição natural (opcional)
   titles              int  not null default 0,
   runner_ups          int  not null default 0,  -- Vices
   mvp                 int  not null default 0,
