@@ -13,6 +13,7 @@ async function getData(): Promise<{ teams: TeamDetail[]; cups: CupEntry[] }> {
       supabase
         .from("teams")
         .select("*, team_players(player_id, position, active, players(name, position))")
+        .eq("active", true) // só times ON aparecem na aba Times
         .order("titles", { ascending: false }),
       supabase
         .from("tournaments")

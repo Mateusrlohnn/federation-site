@@ -197,7 +197,14 @@ export default function AdminTeamsPage() {
                       <Icon name="shield" className="text-[10px] text-faint" />
                     )}
                   </span>
-                  <span className="flex-1 truncate">{t.name}</span>
+                  <span className="flex-1 truncate">
+                    {t.name}
+                    {!t.active && (
+                      <span className="ml-1.5 rounded bg-faint/20 px-1 py-0.5 text-[9px] font-bold text-faint">
+                        OFF
+                      </span>
+                    )}
+                  </span>
                   <span className="text-xs text-faint">
                     {t.roster.filter((m) => m.active).length} jog.
                   </span>
@@ -234,6 +241,35 @@ export default function AdminTeamsPage() {
                   className="rounded-md bg-panel p-2 text-sm text-white focus:outline-none focus:ring-1 focus:ring-gold/50"
                 />
               </label>
+
+              {/* ON / OFF — aparece ou não na aba Times */}
+              <div className="flex items-center justify-between rounded-md bg-panel px-3 py-2.5">
+                <div className="flex flex-col">
+                  <span className="text-sm font-bold">
+                    {draft.active ? "ON — visível na aba Times" : "OFF — time histórico"}
+                  </span>
+                  <span className="text-[11px] text-faint">
+                    {draft.active
+                      ? "Aparece normalmente na aba Times."
+                      : "Não aparece em Times, mas pode ser usado em campeonatos antigos (Torneios)."}
+                  </span>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setDraft({ ...draft, active: !draft.active })}
+                  className={`relative h-7 w-12 shrink-0 rounded-full transition-colors ${
+                    draft.active ? "bg-win" : "bg-faint/40"
+                  }`}
+                  title="Alternar ON/OFF"
+                  aria-pressed={draft.active}
+                >
+                  <span
+                    className={`absolute top-0.5 h-6 w-6 rounded-full bg-white transition-all ${
+                      draft.active ? "left-[22px]" : "left-0.5"
+                    }`}
+                  />
+                </button>
+              </div>
 
               <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
                 {TEAM_FIELDS.map((f) => (

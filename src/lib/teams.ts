@@ -19,6 +19,7 @@ export type Team = {
   id?: string;
   name: string;
   logoUrl: string; // foto do time (URL pública no Storage)
+  active: boolean; // ON aparece na aba Times; OFF = time histórico (só torneios)
   titles: number;
   runnerUps: number;
   wins: number;
@@ -36,7 +37,16 @@ export const TEAM_FIELDS: { key: TeamFieldKey; col: string; label: string }[] = 
 ];
 
 export function emptyTeam(): Team {
-  return { name: "", logoUrl: "", titles: 0, runnerUps: 0, wins: 0, losses: 0, roster: [] };
+  return {
+    name: "",
+    logoUrl: "",
+    active: true,
+    titles: 0,
+    runnerUps: 0,
+    wins: 0,
+    losses: 0,
+    roster: [],
+  };
 }
 
 /** Normaliza a posição vinda do banco para o union type (ou null). */
@@ -53,6 +63,7 @@ export function teamFromRow(r: Record<string, unknown>): Team {
     id: r.id as string,
     name: String(r.name),
     logoUrl: (r.logo_url as string) ?? "",
+    active: r.active !== false,
     titles: Number(r.titles) || 0,
     runnerUps: Number(r.runner_ups) || 0,
     wins: Number(r.wins) || 0,
@@ -66,10 +77,11 @@ export function teamFromRow(r: Record<string, unknown>): Team {
 }
 
 /** Team -> row para gravar (sem id/elenco; elenco vai na join table) */
-export function teamToRow(t: Team): Record<string, string | number | null> {
+export function teamToRow(t: Team): Record<string, string | number | boolean | null> {
   return {
     name: t.name.trim(),
     logo_url: t.logoUrl?.trim() || null,
+    active: t.active,
     titles: Number(t.titles) || 0,
     runner_ups: Number(t.runnerUps) || 0,
     wins: Number(t.wins) || 0,

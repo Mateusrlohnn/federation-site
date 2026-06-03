@@ -8,6 +8,7 @@
 create table if not exists public.teams (
   id          uuid primary key default gen_random_uuid(),
   name        text not null unique,
+  active      boolean not null default true, -- ON aparece em Times; OFF = histórico
   titles      int  not null default 0,   -- Títulos
   runner_ups  int  not null default 0,   -- Vices
   wins        int  not null default 0,   -- Vitórias
