@@ -2,7 +2,17 @@
 
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { createClient } from "@/lib/supabase/client";
-import { TEAM_FIELDS, emptyTeam, teamFromRow, teamToRow, type Team } from "@/lib/teams";
+import Icon from "@/components/ui/Icon";
+import ImageUpload from "@/components/ui/ImageUpload";
+import {
+  TEAM_FIELDS,
+  POSITIONS,
+  emptyTeam,
+  teamFromRow,
+  teamToRow,
+  type Team,
+  type Position,
+} from "@/lib/teams";
 
 type PlayerLite = { id: string; name: string };
 
@@ -19,7 +29,10 @@ export default function AdminTeamsPage() {
 
   const load = useCallback(async () => {
     const [t, p] = await Promise.all([
-      supabase.from("teams").select("*, team_players(player_id)").order("titles", { ascending: false }),
+      supabase
+        .from("teams")
+        .select("*, team_players(player_id, position, active)")
+        .order("titles", { ascending: false }),
       supabase.from("players").select("id, name").order("name"),
     ]);
     if (!t.error && t.data) setTeams(t.data.map(teamFromRow));
@@ -36,12 +49,29 @@ export default function AdminTeamsPage() {
     return m;
   }, [allPlayers]);
 
-  function togglePlayer(id: string) {
+  function addPlayer(id: string) {
+    if (!draft || draft.roster.some((m) => m.playerId === id)) return;
+    setDraft({ ...draft, roster: [...draft.roster, { playerId: id, position: null, active: true }] });
+  }
+
+  function removePlayer(id: string) {
     if (!draft) return;
-    const has = draft.playerIds.includes(id);
+    setDraft({ ...draft, roster: draft.roster.filter((m) => m.playerId !== id) });
+  }
+
+  function setPosition(id: string, position: Position | null) {
+    if (!draft) return;
     setDraft({
       ...draft,
-      playerIds: has ? draft.playerIds.filter((x) => x !== id) : [...draft.playerIds, id],
+      roster: draft.roster.map((m) => (m.playerId === id ? { ...m, position } : m)),
+    });
+  }
+
+  function setActive(id: string, active: boolean) {
+    if (!draft) return;
+    setDraft({
+      ...draft,
+      roster: draft.roster.map((m) => (m.playerId === id ? { ...m, active } : m)),
     });
   }
 
@@ -72,12 +102,17 @@ export default function AdminTeamsPage() {
       teamId = data.id as string;
     }
 
-    // sincroniza o elenco (apaga e regrava)
+    // sincroniza o elenco (apaga e regrava) — mantém posição e status ativo/ex
     await supabase.from("team_players").delete().eq("team_id", teamId);
-    if (draft.playerIds.length) {
-      const { error } = await supabase
-        .from("team_players")
-        .insert(draft.playerIds.map((pid) => ({ team_id: teamId, player_id: pid })));
+    if (draft.roster.length) {
+      const { error } = await supabase.from("team_players").insert(
+        draft.roster.map((m) => ({
+          team_id: teamId,
+          player_id: m.playerId,
+          position: m.position,
+          active: m.active,
+        })),
+      );
       if (error) {
         setBusy(false);
         return setErr(error.message);
@@ -113,26 +148,24 @@ export default function AdminTeamsPage() {
     <>
       {(msg || err) && (
         <div
-          className={`p-3 mb-4 rounded-lg text-xs ${
-            err
-              ? "bg-red-950 text-red-300 border border-red-800"
-              : "bg-green-950 text-green-300 border border-green-800"
+          className={`mb-4 rounded-md p-3 text-xs ${
+            err ? "bg-loss/10 text-loss" : "bg-win/10 text-win"
           }`}
         >
           {err || msg}
         </div>
       )}
 
-      <div className="grid md:grid-cols-[300px_1fr] gap-4">
+      <div className="grid gap-4 md:grid-cols-[300px_1fr]">
         {/* LISTA DE TIMES */}
-        <div className="bg-[#2f2f2f] border border-[#454545] rounded-xl p-3 flex flex-col gap-3 h-max">
+        <div className="flex h-max flex-col gap-3 rounded-lg bg-card p-3">
           <button
             onClick={() => {
               setDraft(emptyTeam());
               setErr("");
               setMsg("");
             }}
-            className="bg-yellow-500 hover:bg-yellow-600 text-yellow-900 font-bold rounded-lg py-2 text-sm"
+            className="rounded-md bg-gold py-2 text-sm font-bold text-[#1a1a1e] hover:opacity-90"
           >
             + Novo time
           </button>
@@ -141,9 +174,9 @@ export default function AdminTeamsPage() {
             value={q}
             onChange={(e) => setQ(e.target.value)}
             placeholder="Buscar time..."
-            className="text-xs border border-[#8d8d8d68] bg-[#1d1d1d] p-2 rounded"
+            className="rounded-md bg-panel p-2 text-xs text-white focus:outline-none focus:ring-1 focus:ring-gold/50"
           />
-          <ul className="flex flex-col gap-1 max-h-[60vh] overflow-y-auto text-sm">
+          <ul className="flex max-h-[60vh] flex-col gap-1 overflow-y-auto text-sm">
             {filteredTeams.map((t) => (
               <li key={t.id ?? t.name}>
                 <button
@@ -152,40 +185,57 @@ export default function AdminTeamsPage() {
                     setErr("");
                     setMsg("");
                   }}
-                  className={`w-full flex items-center justify-between rounded-lg px-2 py-1.5 text-left hover:bg-[#1d1d1d] ${
-                    draft?.id && draft.id === t.id ? "bg-[#1d1d1d] ring-1 ring-yellow-500" : ""
+                  className={`flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-left hover:bg-panel ${
+                    draft?.id && draft.id === t.id ? "bg-panel ring-1 ring-gold" : ""
                   }`}
                 >
-                  <span className="truncate">{t.name}</span>
-                  <span className="text-[#8d8d8d] text-xs">{t.playerIds.length} jog.</span>
+                  <span className="flex h-6 w-6 shrink-0 items-center justify-center overflow-hidden rounded bg-base">
+                    {t.logoUrl ? (
+                      // eslint-disable-next-line @next/next/no-img-element
+                      <img src={t.logoUrl} alt="" className="h-full w-full object-cover" />
+                    ) : (
+                      <Icon name="shield" className="text-[10px] text-faint" />
+                    )}
+                  </span>
+                  <span className="flex-1 truncate">{t.name}</span>
+                  <span className="text-xs text-faint">
+                    {t.roster.filter((m) => m.active).length} jog.
+                  </span>
                 </button>
               </li>
             ))}
             {filteredTeams.length === 0 && (
-              <li className="text-xs text-[#8d8d8d] px-2 py-1">Nenhum time ainda.</li>
+              <li className="px-2 py-1 text-xs text-faint">Nenhum time ainda.</li>
             )}
           </ul>
         </div>
 
         {/* EDITOR */}
-        <div className="bg-[#2f2f2f] border border-[#454545] rounded-xl p-4">
+        <div className="rounded-lg bg-card p-4">
           {!draft ? (
-            <p className="text-[#a9a9a9] text-sm">
+            <p className="text-sm text-faint">
               Selecione um time, ou clique em <b>+ Novo time</b>.
             </p>
           ) : (
             <div className="flex flex-col gap-4">
+              <ImageUpload
+                label="Foto do time"
+                folder="teams"
+                value={draft.logoUrl}
+                onChange={(url) => setDraft({ ...draft, logoUrl: url })}
+              />
+
               <label className="flex flex-col gap-1 text-xs">
                 Nome do time
                 <input
                   type="text"
                   value={draft.name}
                   onChange={(e) => setDraft({ ...draft, name: e.target.value })}
-                  className="border border-[#8d8d8d68] bg-[#1d1d1d] p-2 rounded text-sm"
+                  className="rounded-md bg-panel p-2 text-sm text-white focus:outline-none focus:ring-1 focus:ring-gold/50"
                 />
               </label>
 
-              <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+              <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
                 {TEAM_FIELDS.map((f) => (
                   <label key={f.key} className="flex flex-col gap-1 text-xs">
                     {f.label}
@@ -194,47 +244,95 @@ export default function AdminTeamsPage() {
                       min={0}
                       value={draft[f.key]}
                       onChange={(e) => setDraft({ ...draft, [f.key]: Number(e.target.value) || 0 })}
-                      className="border border-[#8d8d8d68] bg-[#1d1d1d] p-2 rounded"
+                      className="rounded-md bg-panel p-2 text-white focus:outline-none focus:ring-1 focus:ring-gold/50"
                     />
                   </label>
                 ))}
               </div>
 
               {/* ELENCO */}
-              <div className="border-t border-[#454545] pt-3">
-                <div className="flex items-center justify-between mb-2">
-                  <span className="text-sm font-bold">Elenco ({draft.playerIds.length})</span>
+              <div className="border-t border-white/5 pt-3">
+                <div className="mb-2 flex items-center justify-between">
+                  <span className="text-sm font-bold">
+                    Elenco ({draft.roster.filter((m) => m.active).length} ativos
+                    {draft.roster.some((m) => !m.active) &&
+                      `, ${draft.roster.filter((m) => !m.active).length} ex`}
+                    )
+                  </span>
                 </div>
-                {draft.playerIds.length > 0 && (
-                  <div className="flex flex-wrap gap-1.5 mb-2">
-                    {draft.playerIds.map((id) => (
-                      <button
-                        key={id}
-                        onClick={() => togglePlayer(id)}
-                        className="flex items-center gap-1 bg-yellow-500 text-yellow-900 rounded-full px-2 py-0.5 text-xs font-medium"
-                        title="Remover do elenco"
+
+                {/* Lista de membros: posição + status Ativo/Ex + remover */}
+                {draft.roster.length > 0 && (
+                  <ul className="mb-3 flex flex-col gap-1.5">
+                    {draft.roster.map((m) => (
+                      <li
+                        key={m.playerId}
+                        className="flex flex-wrap items-center gap-2 rounded-md bg-panel px-2 py-1.5"
                       >
-                        {nameById.get(id) ?? id} ✕
-                      </button>
+                        <span className="min-w-0 flex-1 truncate text-sm font-medium">
+                          {nameById.get(m.playerId) ?? m.playerId}
+                        </span>
+
+                        {/* Posição */}
+                        <select
+                          value={m.position ?? ""}
+                          onChange={(e) =>
+                            setPosition(m.playerId, (e.target.value || null) as Position | null)
+                          }
+                          className="rounded bg-base p-1 text-xs text-white focus:outline-none focus:ring-1 focus:ring-gold/50"
+                        >
+                          <option value="">Sem posição</option>
+                          {POSITIONS.map((pos) => (
+                            <option key={pos.key} value={pos.key}>
+                              {pos.label} ({pos.sigla})
+                            </option>
+                          ))}
+                        </select>
+
+                        {/* Status Ativo/Ex */}
+                        <button
+                          type="button"
+                          onClick={() => setActive(m.playerId, !m.active)}
+                          className={`rounded px-2 py-1 text-[11px] font-bold ${
+                            m.active
+                              ? "bg-win/20 text-win"
+                              : "bg-faint/20 text-faint"
+                          }`}
+                          title="Alternar entre Ativo e Ex-jogador"
+                        >
+                          {m.active ? "Ativo" : "Ex"}
+                        </button>
+
+                        {/* Remover */}
+                        <button
+                          type="button"
+                          onClick={() => removePlayer(m.playerId)}
+                          className="rounded px-1.5 py-1 text-xs text-loss hover:bg-loss/10"
+                          title="Remover do elenco (apaga o histórico deste jogador)"
+                        >
+                          ✕
+                        </button>
+                      </li>
                     ))}
-                  </div>
+                  </ul>
                 )}
+
                 <input
                   type="text"
                   value={rosterQ}
                   onChange={(e) => setRosterQ(e.target.value)}
                   placeholder="Buscar jogador para adicionar..."
-                  className="text-xs border border-[#8d8d8d68] bg-[#1d1d1d] p-2 rounded w-full mb-2"
+                  className="mb-2 w-full rounded-md bg-panel p-2 text-xs text-white focus:outline-none focus:ring-1 focus:ring-gold/50"
                 />
-                <ul className="flex flex-col gap-0.5 max-h-[200px] overflow-y-auto text-sm border border-[#454545] rounded-lg p-1">
+                <ul className="flex max-h-[200px] flex-col gap-0.5 overflow-y-auto rounded-md bg-panel p-1 text-sm">
                   {filteredPlayers.slice(0, 60).map((p) => {
-                    const sel = draft.playerIds.includes(p.id);
+                    const sel = draft.roster.some((m) => m.playerId === p.id);
                     return (
                       <li key={p.id}>
                         <button
-                          onClick={() => togglePlayer(p.id)}
-                          className={`w-full text-left rounded px-2 py-1 hover:bg-[#1d1d1d] flex items-center justify-between ${
-                            sel ? "text-yellow-500" : ""
+                          onClick={() => (sel ? removePlayer(p.id) : addPlayer(p.id))}
+                          className={`flex w-full items-center justify-between rounded px-2 py-1 text-left hover:bg-base ${
+                            sel ? "text-gold" : ""
                           }`}
                         >
                           {p.name}
@@ -246,12 +344,12 @@ export default function AdminTeamsPage() {
                 </ul>
               </div>
 
-              <div className="flex items-center justify-end gap-2 border-t border-[#454545] pt-3">
+              <div className="flex items-center justify-end gap-2 border-t border-white/5 pt-3">
                 {draft.id && (
                   <button
                     onClick={remove}
                     disabled={busy}
-                    className="border border-red-800 text-red-300 rounded-lg px-4 py-2 text-sm hover:bg-red-950 disabled:opacity-60"
+                    className="rounded-md border border-loss/40 px-4 py-2 text-sm text-loss hover:bg-loss/10 disabled:opacity-60"
                   >
                     Remover
                   </button>
@@ -259,7 +357,7 @@ export default function AdminTeamsPage() {
                 <button
                   onClick={save}
                   disabled={busy}
-                  className="bg-yellow-500 hover:bg-yellow-600 text-yellow-900 font-bold rounded-lg px-5 py-2 text-sm disabled:opacity-60"
+                  className="rounded-md bg-gold px-5 py-2 text-sm font-bold text-[#1a1a1e] hover:opacity-90 disabled:opacity-60"
                 >
                   {busy ? "Salvando…" : "Salvar"}
                 </button>

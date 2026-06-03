@@ -2,137 +2,288 @@
 
 import { useState } from "react";
 import Icon, { ICONS } from "@/components/ui/Icon";
+import { ACCENT, PerfBar } from "@/components/ui/stats";
+import PlayerProfileModal from "@/components/players/PlayerProfileModal";
+import PlayerComparisonModal from "@/components/players/PlayerComparisonModal";
 import maxwidth from "@/styles/maxwidth.module.css";
 import { avatarUrl, type HofPlayer, type StatKey } from "@/lib/hof";
 
 const boards: { key: StatKey | "points"; label: string; icon: keyof typeof ICONS; color: string }[] = [
-  { key: "points", label: "Pontos", icon: "trophy", color: "text-yellow-500" },
-  { key: "titles", label: "Títulos", icon: "circle-check", color: "text-green-500" },
-  { key: "mvp", label: "MVP", icon: "futbol", color: "text-blue-500" },
-  { key: "runnerUps", label: "Vices", icon: "note-sticky", color: "text-red-500" },
+  { key: "points", label: "Pontos", icon: "trophy", color: ACCENT.gold },
+  { key: "titles", label: "Títulos", icon: "circle-check", color: ACCENT.win },
+  { key: "mvp", label: "MVP", icon: "futbol", color: ACCENT.draw },
+  { key: "runnerUps", label: "Vices", icon: "note-sticky", color: ACCENT.loss },
 ];
+
+const podiumAccent = ["#ffb300", "#c7ccd1", "#cd7f32"]; // ouro, prata, bronze
+
+const PAGE_SIZE = 10;
+
+/** Páginas visíveis no paginador: tudo até 7, senão janela com reticências. */
+function pageWindow(current: number, total: number): (number | "…")[] {
+  if (total <= 7) return Array.from({ length: total }, (_, i) => i + 1);
+  const out: (number | "…")[] = [1];
+  const start = Math.max(2, current - 1);
+  const end = Math.min(total - 1, current + 1);
+  if (start > 2) out.push("…");
+  for (let i = start; i <= end; i++) out.push(i);
+  if (end < total - 1) out.push("…");
+  out.push(total);
+  return out;
+}
 
 export default function PlayersView({ players }: { players: HofPlayer[] }) {
   const [q, setQ] = useState("");
+  const [page, setPage] = useState(1);
+  const [selected, setSelected] = useState<{ p: HofPlayer; rank: number } | null>(null);
+  const [comparing, setComparing] = useState(false);
   const ranked = [...players].sort((a, b) => b.points - a.points);
   const rows = ranked.map((p, i) => ({ p, rank: i + 1 }));
   const filtered = rows.filter(({ p }) => p.name.toLowerCase().includes(q.toLowerCase().trim()));
 
+  const totalPages = Math.max(1, Math.ceil(filtered.length / PAGE_SIZE));
+  const safePage = Math.min(page, totalPages);
+  const pageRows = filtered.slice((safePage - 1) * PAGE_SIZE, safePage * PAGE_SIZE);
+  const pages = pageWindow(safePage, totalPages);
+
   return (
     <div className={maxwidth.maxWidthContainer} style={{ height: "auto", position: "static" }}>
-      {/* Header card */}
-      <div className="flex flex-col justify-between p-4 mb-4 w-full bg-[#2f2f2f] border border-[#454545] rounded-xl">
-        <h1 className="text-xl font-bold">
-          <Icon name="trophy" className="text-yellow-500 mr-2" />
-          Hall of Fame
-        </h1>
-        <span className="mt-2 max-w-[520px] text-[#cfcfcf]">
-          Ranking histórico dos jogadores da Federação Rebug por pontuação.{" "}
-          <b>{ranked.length} jogadores</b> registrados.
-        </span>
+      {/* Cabeçalho de perfil */}
+      <div className="mb-4 flex w-full flex-col gap-4 rounded-lg bg-card p-5 sm:flex-row sm:items-center sm:justify-between">
+        <div className="flex flex-col">
+          <h1 className="flex items-center gap-2 text-xl font-bold tracking-tight">
+            <Icon name="trophy" className="text-gold" />
+            Hall of Fame
+          </h1>
+          <span className="mt-1 max-w-[520px] text-faint">
+            Ranking histórico dos jogadores da Federação Rebug por pontuação.{" "}
+            <b className="text-white">{ranked.length} jogadores</b> registrados.
+          </span>
+        </div>
+        <button
+          onClick={() => setComparing(true)}
+          className="flex shrink-0 items-center justify-center gap-2 rounded-md bg-gold px-4 py-2.5 text-sm font-bold text-[#1a1a1e] transition-transform hover:scale-[1.03] active:scale-100"
+        >
+          <Icon name="handshake-angle" />
+          Comparar Jogadores
+        </button>
       </div>
 
-      {/* Podium */}
-      <div className="grid grid-cols-3 gap-2 md:gap-4 mb-4">
+      {/* Pódio — top 3 */}
+      <div className="mb-4 grid grid-cols-3 gap-2 md:gap-4">
         {ranked.slice(0, 3).map(({ name, points }, i) => (
-          <div
+          <button
             key={name}
-            className="flex flex-col items-center bg-[#2f2f2f] border border-[#454545] rounded-xl p-3 pt-6 relative"
+            onClick={() => setSelected({ p: ranked[i], rank: i + 1 })}
+            className="relative flex flex-col items-center rounded-lg bg-card p-3 pt-6 text-center transition-colors hover:bg-panel"
+            style={{ boxShadow: `inset 0 2px 0 0 ${podiumAccent[i]}` }}
           >
             <span
-              className={`absolute top-2 left-2 text-xs font-bold ${
-                i === 0 ? "text-yellow-500" : i === 1 ? "text-gray-300" : "text-amber-700"
-              }`}
+              className="absolute left-3 top-2 text-xs font-bold"
+              style={{ color: podiumAccent[i] }}
             >
               #{i + 1}
             </span>
-            <div className="h-[80px] w-[64px] overflow-hidden flex items-end justify-center">
+            <div className="flex h-[80px] w-[64px] items-end justify-center overflow-hidden">
               {/* eslint-disable-next-line @next/next/no-img-element */}
               <img src={avatarUrl(name)} alt={name} className="h-[100px] w-[64px] object-contain" />
             </div>
-            <span className="mt-2 font-bold text-sm">{name}</span>
-            <span className="text-yellow-500 font-bold text-sm">{points} pts</span>
-          </div>
+            <span className="mt-2 text-sm font-bold">{name}</span>
+            <span className="text-sm font-bold text-gold">{points} pts</span>
+          </button>
         ))}
       </div>
 
-      {/* Leaderboards */}
-      <div className="text-xs grid grid-cols-2 md:grid-cols-4 gap-4 mb-4">
+      {/* Barras de Histórico de Performance (leaderboards por estatística) */}
+      <div className="mb-4 grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-4">
         {boards.map((board) => {
           const top = [...ranked]
             .sort((a, b) => (b[board.key] as number) - (a[board.key] as number))
             .slice(0, 5);
+          const max = (top[0]?.[board.key] as number) ?? 0;
           return (
-            <div key={board.label} className="rounded-lg bg-[#2f2f2f] border border-[#454545] pb-2">
-              <h2 className="px-2 py-3 font-bold text-xs border-b border-[#454545]">
-                <Icon name={board.icon} className={`mr-1 ${board.color}`} />
+            <div key={board.label} className="rounded-lg bg-card p-3">
+              <h2 className="mb-3 flex items-center gap-1.5 text-xs font-bold uppercase tracking-wide">
+                <Icon name={board.icon} style={{ color: board.color }} />
                 {board.label}
               </h2>
-              <ul className="px-2 pt-2 space-y-1.5">
+              <div className="flex flex-col gap-1.5">
                 {top.map((p, i) => (
-                  <li key={p.name} className="flex items-center justify-between">
-                    <span className="truncate">
-                      <span className="text-[#8d8d8d] mr-1">{i + 1}</span>
-                      {p.name}
-                    </span>
-                    <span className="font-mono text-[#cfcfcf]">{p[board.key] as number}</span>
-                  </li>
+                  <PerfBar
+                    key={p.name}
+                    value={p[board.key] as number}
+                    max={max}
+                    color={board.color}
+                    label={
+                      <>
+                        <span className="mr-1.5 text-faint">{i + 1}</span>
+                        {p.name}
+                      </>
+                    }
+                    trailing={p[board.key] as number}
+                  />
                 ))}
-              </ul>
+              </div>
             </div>
           );
         })}
       </div>
 
-      {/* Search */}
+      {/* Busca */}
       <input
         type="text"
         value={q}
-        onChange={(e) => setQ(e.target.value)}
+        onChange={(e) => {
+          setQ(e.target.value);
+          setPage(1);
+        }}
         placeholder="Search for a player..."
-        className="text-xs border border-[#8d8d8d68] p-2 rounded mb-4 w-full"
+        className="mb-4 w-full rounded-md bg-panel p-2.5 text-xs text-white placeholder:text-faint focus:outline-none focus:ring-1 focus:ring-gold/50"
       />
 
-      {/* Ranking table */}
+      {/* Tabela de Histórico (ranking completo, paginado) */}
       {filtered.length === 0 ? (
-        <div className="p-4">No players found.</div>
+        <div className="rounded-lg bg-card p-4 text-faint">No players found.</div>
       ) : (
-        <div className="overflow-x-auto rounded-lg border border-[#454545]">
-          <table className="w-full text-xs text-left">
-            <thead className="bg-[#2f2f2f] text-[#cfcfcf]">
-              <tr>
-                <th className="px-3 py-2">#</th>
-                <th className="px-3 py-2">Jogador</th>
-                <th className="px-2 py-2 text-center">Tít</th>
-                <th className="px-2 py-2 text-center">Vic</th>
-                <th className="px-2 py-2 text-center">MVP</th>
-                <th className="px-2 py-2 text-center">T1</th>
-                <th className="px-2 py-2 text-center">T2</th>
-                <th className="px-2 py-2 text-center">T3</th>
-                <th className="px-3 py-2 text-right">Pontos</th>
-              </tr>
-            </thead>
-            <tbody>
-              {filtered.map(({ p, rank }) => (
-                <tr key={p.name} className="border-t border-[#333] hover:bg-[#1d1d1d]">
-                  <td className="px-3 py-2 font-mono text-[#8d8d8d]">{rank}</td>
-                  <td className="px-3 py-2 font-semibold">{p.name}</td>
-                  <td className="px-2 py-2 text-center">{p.titles}</td>
-                  <td className="px-2 py-2 text-center">{p.runnerUps}</td>
-                  <td className="px-2 py-2 text-center">{p.mvp}</td>
-                  <td className="px-2 py-2 text-center">{p.top1}</td>
-                  <td className="px-2 py-2 text-center">{p.top2}</td>
-                  <td className="px-2 py-2 text-center">{p.top3}</td>
-                  <td className="px-3 py-2 text-right font-bold text-yellow-500">{p.points}</td>
+        <div className="overflow-hidden rounded-lg bg-card">
+          <div className="overflow-x-auto">
+            <table className="w-full text-left text-sm">
+              <thead className="border-b border-white/10 text-[11px] uppercase tracking-wide text-faint">
+                <tr>
+                  <th className="px-4 py-3 font-semibold">#</th>
+                  <th className="px-4 py-3 font-semibold">Jogador</th>
+                  <th className="px-2 py-3 text-center font-semibold">Tít</th>
+                  <th className="px-2 py-3 text-center font-semibold">Vic</th>
+                  <th className="px-2 py-3 text-center font-semibold">MVP</th>
+                  <th className="px-2 py-3 text-center font-semibold">T1</th>
+                  <th className="px-2 py-3 text-center font-semibold">T2</th>
+                  <th className="px-2 py-3 text-center font-semibold">T3</th>
+                  <th className="px-4 py-3 text-right font-semibold">Pontos</th>
                 </tr>
-              ))}
-            </tbody>
-          </table>
+              </thead>
+              <tbody>
+                {pageRows.map(({ p, rank }, i) => {
+                  const medal =
+                    rank === 1
+                      ? "#ffb300"
+                      : rank === 2
+                        ? "#c7ccd1"
+                        : rank === 3
+                          ? "#cd7f32"
+                          : undefined;
+                  return (
+                    <tr
+                      key={p.name}
+                      className={`border-b border-white/5 transition-colors last:border-0 hover:bg-panel/50 ${
+                        i % 2 ? "bg-panel/20" : ""
+                      }`}
+                    >
+                      <td className="px-4 py-3">
+                        <span
+                          className="font-mono text-base font-bold"
+                          style={{ color: medal ?? "#8a8a93" }}
+                        >
+                          {rank}
+                        </span>
+                      </td>
+                      <td className="px-4 py-3 font-semibold">
+                        <button
+                          onClick={() => setSelected({ p, rank })}
+                          className="group flex items-center gap-3 text-left transition-colors hover:text-gold"
+                          title={`Ver perfil de ${p.name}`}
+                        >
+                          <span className="flex h-11 w-9 shrink-0 items-end justify-center overflow-hidden rounded-md bg-panel ring-gold/0 transition-all duration-200 group-hover:ring-2 group-hover:ring-gold/60">
+                            {/* eslint-disable-next-line @next/next/no-img-element */}
+                            <img
+                              src={avatarUrl(p.name)}
+                              alt={p.name}
+                              className="h-[52px] w-9 object-contain transition-transform duration-200 ease-out group-hover:scale-110"
+                            />
+                          </span>
+                          <span className="text-[15px] transition-transform duration-200 group-hover:translate-x-0.5">
+                            {p.name}
+                          </span>
+                        </button>
+                      </td>
+                      <td className="px-2 py-3 text-center text-faint">{p.titles}</td>
+                      <td className="px-2 py-3 text-center text-faint">{p.runnerUps}</td>
+                      <td className="px-2 py-3 text-center text-faint">{p.mvp}</td>
+                      <td className="px-2 py-3 text-center text-faint">{p.top1}</td>
+                      <td className="px-2 py-3 text-center text-faint">{p.top2}</td>
+                      <td className="px-2 py-3 text-center text-faint">{p.top3}</td>
+                      <td className="px-4 py-3 text-right">
+                        <span className="inline-flex h-8 min-w-12 items-center justify-center rounded-md bg-gold px-2 text-base font-bold text-[#1a1a1e]">
+                          {p.points}
+                        </span>
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
+
+          {/* Paginador */}
+          {totalPages > 1 && (
+            <div className="flex flex-wrap items-center justify-between gap-3 border-t border-white/10 px-4 py-3">
+              <span className="text-xs text-faint">
+                {(safePage - 1) * PAGE_SIZE + 1}–{Math.min(safePage * PAGE_SIZE, filtered.length)} de{" "}
+                {filtered.length} jogadores
+              </span>
+              <div className="flex items-center gap-1">
+                <button
+                  onClick={() => setPage(safePage - 1)}
+                  disabled={safePage === 1}
+                  aria-label="Página anterior"
+                  className="flex h-8 min-w-8 items-center justify-center rounded-md bg-panel px-2 text-sm hover:bg-panel/70 disabled:opacity-40"
+                >
+                  ‹
+                </button>
+                {pages.map((n, idx) =>
+                  n === "…" ? (
+                    <span key={`e${idx}`} className="px-1.5 text-faint">
+                      …
+                    </span>
+                  ) : (
+                    <button
+                      key={n}
+                      onClick={() => setPage(n)}
+                      className={`h-8 min-w-8 rounded-md px-2 text-sm transition-colors ${
+                        n === safePage
+                          ? "bg-gold font-bold text-[#1a1a1e]"
+                          : "bg-panel hover:bg-panel/70"
+                      }`}
+                    >
+                      {n}
+                    </button>
+                  ),
+                )}
+                <button
+                  onClick={() => setPage(safePage + 1)}
+                  disabled={safePage === totalPages}
+                  aria-label="Próxima página"
+                  className="flex h-8 min-w-8 items-center justify-center rounded-md bg-panel px-2 text-sm hover:bg-panel/70 disabled:opacity-40"
+                >
+                  ›
+                </button>
+              </div>
+            </div>
+          )}
         </div>
       )}
-      <p className="text-[10px] text-[#8d8d8d] mt-2">
+      <p className="mt-2 text-[10px] text-faint">
         Pontos incluem estatísticas de Academy (Títulos, MVP, Vices e Top 1–3).
       </p>
+
+      <PlayerProfileModal
+        player={selected?.p ?? null}
+        rank={selected?.rank ?? 0}
+        onClose={() => setSelected(null)}
+      />
+
+      {comparing && (
+        <PlayerComparisonModal players={players} onClose={() => setComparing(false)} />
+      )}
     </div>
   );
 }

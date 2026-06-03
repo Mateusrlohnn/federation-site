@@ -42,7 +42,7 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
   if (!supabaseEnabled) {
     return (
       <div className={maxwidth.maxWidthContainer}>
-        <div className="p-4 mt-6 bg-[#2f2f2f] border border-[#454545] rounded-xl">
+        <div className="mt-6 rounded-lg bg-card p-4">
           Supabase não está configurado. Preencha o <code>.env.local</code> e reinicie o servidor.
         </div>
       </div>
@@ -52,7 +52,7 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
   if (!ready) {
     return (
       <div className={maxwidth.maxWidthContainer}>
-        <p className="p-4 mt-6 text-[#a9a9a9]">Carregando…</p>
+        <p className="mt-6 p-4 text-faint">Carregando…</p>
       </div>
     );
   }
@@ -65,10 +65,10 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
 
   return (
     <div className={maxwidth.maxWidthContainer} style={{ height: "auto", position: "static" }}>
-      <div className="flex items-center justify-between gap-3 p-3 my-4 bg-[#2f2f2f] border border-[#454545] rounded-xl flex-wrap">
-        <div className="flex items-center gap-1 flex-wrap">
-          <span className="font-bold mr-2">
-            <Icon name="shield" className="text-yellow-500 mr-1" />
+      <div className="my-4 flex flex-wrap items-center justify-between gap-3 rounded-lg bg-card p-3">
+        <div className="flex flex-wrap items-center gap-1">
+          <span className="mr-2 flex items-center gap-1.5 font-bold">
+            <Icon name="shield" className="text-gold" />
             Admin
           </span>
           {tabs.map((t) => {
@@ -77,8 +77,8 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
               <Link
                 key={t.href}
                 href={t.href}
-                className={`rounded-lg px-3 py-1.5 text-sm font-medium ${
-                  active ? "bg-yellow-500 text-yellow-900" : "text-[#cfcfcf] hover:bg-[#1d1d1d]"
+                className={`rounded-md px-3 py-1.5 text-sm font-medium ${
+                  active ? "bg-gold text-[#1a1a1e]" : "text-faint hover:bg-panel"
                 }`}
               >
                 {t.label}
@@ -87,10 +87,10 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
           })}
         </div>
         <div className="flex items-center gap-3 text-xs">
-          {email && <span className="text-[#a9a9a9] hidden sm:inline">{email}</span>}
+          {email && <span className="hidden text-faint sm:inline">{email}</span>}
           <button
             onClick={logout}
-            className="border border-[#454545] rounded-lg px-3 py-1.5 hover:bg-[#1d1d1d]"
+            className="rounded-md bg-panel px-3 py-1.5 hover:bg-panel/70"
           >
             Sair
           </button>

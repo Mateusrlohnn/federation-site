@@ -2,31 +2,42 @@
 
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { createClient } from "@/lib/supabase/client";
+import ImageUpload from "@/components/ui/ImageUpload";
 import {
   TOURNAMENT_STATUSES,
+  MATCH_EVENT_TYPES,
   emptyTournament,
   emptyMatch,
   tournamentFromRow,
   matchFromRow,
   computeTopScorers,
+  teamGoals,
   type Tournament,
   type Match,
+  type MatchEventType,
   type TournamentMessage,
 } from "@/lib/tournaments";
 
 type Lite = { id: string; name: string };
+
+const eventEmoji = (t: MatchEventType) => MATCH_EVENT_TYPES.find((x) => x.type === t)?.emoji ?? "";
 
 export default function AdminTournamentsPage() {
   const supabase = createClient();
   const [list, setList] = useState<Tournament[]>([]);
   const [allTeams, setAllTeams] = useState<Lite[]>([]);
   const [allPlayers, setAllPlayers] = useState<Lite[]>([]);
+  const [rosters, setRosters] = useState<Record<string, string[]>>({}); // teamId -> playerIds
   const [draft, setDraft] = useState<Tournament | null>(null);
   const [matches, setMatches] = useState<Match[]>([]);
   const [messages, setMessages] = useState<TournamentMessage[]>([]);
   const [newMatch, setNewMatch] = useState<Match>(emptyMatch());
-  const [goalPlayer, setGoalPlayer] = useState("");
-  const [goalCount, setGoalCount] = useState(1);
+  const [editingMatchId, setEditingMatchId] = useState<string | null>(null);
+  const [editorOpen, setEditorOpen] = useState(false);
+  const [liveMode, setLiveMode] = useState(false); // editor de partida ao vivo
+  const [evPlayer, setEvPlayer] = useState("");
+  const [evType, setEvType] = useState<MatchEventType>("goal");
+  const [evMinute, setEvMinute] = useState("");
   const [newMessage, setNewMessage] = useState("");
   const [busy, setBusy] = useState(false);
   const [msg, setMsg] = useState("");
@@ -42,17 +53,25 @@ export default function AdminTournamentsPage() {
   }, [allPlayers]);
 
   const loadLists = useCallback(async () => {
-    const [t, te, pl] = await Promise.all([
+    const [t, te, pl, tp] = await Promise.all([
       supabase
         .from("tournaments")
         .select("*, tournament_teams(team_id), tournament_players(player_id)")
         .order("created_at", { ascending: false }),
       supabase.from("teams").select("id, name").order("name"),
       supabase.from("players").select("id, name").order("name"),
+      supabase.from("team_players").select("team_id, player_id"),
     ]);
     if (!t.error && t.data) setList(t.data.map(tournamentFromRow));
     if (!te.error && te.data) setAllTeams(te.data as Lite[]);
     if (!pl.error && pl.data) setAllPlayers(pl.data as Lite[]);
+    if (!tp.error && tp.data) {
+      const map: Record<string, string[]> = {};
+      (tp.data as { team_id: string; player_id: string }[]).forEach((r) => {
+        (map[r.team_id] ??= []).push(r.player_id);
+      });
+      setRosters(map);
+    }
   }, [supabase]);
 
   const loadSub = useCallback(
@@ -60,7 +79,7 @@ export default function AdminTournamentsPage() {
       const [m, ms] = await Promise.all([
         supabase
           .from("matches")
-          .select("*, match_goals(player_id, goals)")
+          .select("*, match_events(player_id, team_id, type, minute)")
           .eq("tournament_id", tid)
           .order("played_at", { ascending: false, nullsFirst: false }),
         supabase
@@ -90,12 +109,36 @@ export default function AdminTournamentsPage() {
   function select(t: Tournament | null) {
     setErr("");
     setMsg("");
-    setNewMatch(emptyMatch());
+    resetMatchForm();
     setNewMessage("");
     setDraft(t ? { ...t } : null);
     setMatches([]);
     setMessages([]);
     if (t?.id) loadSub(t.id);
+  }
+
+  function resetMatchForm() {
+    setNewMatch(emptyMatch());
+    setEditingMatchId(null);
+    setEditorOpen(false);
+    setLiveMode(false);
+    setEvPlayer("");
+    setEvType("goal");
+    setEvMinute("");
+  }
+
+  function startSumula() {
+    resetMatchForm();
+    setNewMatch(emptyMatch());
+    setLiveMode(false);
+    setEditorOpen(true);
+  }
+
+  function startLive() {
+    resetMatchForm();
+    setNewMatch({ ...emptyMatch(), isLive: true });
+    setLiveMode(true);
+    setEditorOpen(true);
   }
 
   function toggle(list: string[], id: string) {
@@ -109,7 +152,19 @@ export default function AdminTournamentsPage() {
     setErr("");
     setMsg("");
     let tid = draft.id;
-    const row = { name: draft.name.trim(), status: draft.status };
+    // só grava campeão se o time ainda for participante
+    const champion =
+      draft.championTeamId && draft.teamIds.includes(draft.championTeamId)
+        ? draft.championTeamId
+        : null;
+    const row = {
+      name: draft.name.trim(),
+      status: draft.status,
+      image_url: draft.imageUrl?.trim() || null,
+      logo_url: draft.logoUrl?.trim() || null,
+      champion_team_id: champion,
+      organizer_id: draft.organizerId || null,
+    };
     if (tid) {
       const { error } = await supabase.from("tournaments").update(row).eq("id", tid);
       if (error) return finish(error.message);
@@ -123,11 +178,6 @@ export default function AdminTournamentsPage() {
       await supabase
         .from("tournament_teams")
         .insert(draft.teamIds.map((team_id) => ({ tournament_id: tid, team_id })));
-    await supabase.from("tournament_players").delete().eq("tournament_id", tid);
-    if (draft.playerIds.length)
-      await supabase
-        .from("tournament_players")
-        .insert(draft.playerIds.map((player_id) => ({ tournament_id: tid, player_id })));
     setBusy(false);
     setMsg(`Torneio "${draft.name}" salvo.`);
     setDraft({ ...draft, id: tid });
@@ -152,40 +202,116 @@ export default function AdminTournamentsPage() {
     await loadLists();
   }
 
-  function addGoal() {
-    if (!goalPlayer || goalCount < 1) return;
-    setNewMatch((m) => ({ ...m, goals: [...m.goals, { playerId: goalPlayer, goals: goalCount }] }));
-    setGoalPlayer("");
-    setGoalCount(1);
+  // jogadores elegíveis = elenco dos 2 times selecionados (com o time de origem)
+  function eligiblePlayers(): { id: string; name: string; teamId: string }[] {
+    const out: { id: string; name: string; teamId: string }[] = [];
+    const seen = new Set<string>();
+    for (const teamId of [newMatch.homeTeamId, newMatch.awayTeamId]) {
+      if (!teamId) continue;
+      for (const pid of rosters[teamId] ?? []) {
+        if (seen.has(pid)) continue;
+        seen.add(pid);
+        out.push({ id: pid, name: playerName(pid), teamId });
+      }
+    }
+    return out.sort((a, b) => a.name.localeCompare(b.name));
   }
 
-  async function addMatch() {
+  function addEvent() {
+    if (!evPlayer) return;
+    const teamId = eligiblePlayers().find((p) => p.id === evPlayer)?.teamId ?? null;
+    const minute = evMinute.trim() === "" ? null : Number(evMinute) || 0;
+    setNewMatch((m) => ({
+      ...m,
+      events: [...m.events, { playerId: evPlayer, teamId, type: evType, minute }],
+    }));
+    setEvPlayer("");
+    setEvMinute("");
+  }
+
+  function removeEvent(i: number) {
+    setNewMatch((m) => ({ ...m, events: m.events.filter((_, idx) => idx !== i) }));
+  }
+
+  function editMatch(m: Match) {
+    setEditingMatchId(m.id ?? null);
+    setNewMatch({ ...m });
+    setLiveMode(m.isLive);
+    setEditorOpen(true);
+    setEvPlayer("");
+    setEvType("goal");
+    setEvMinute("");
+    setErr("");
+    setMsg("");
+  }
+
+  // endLive: força o fim da partida (vira súmula) e mantém o editor aberto p/ MVP
+  async function saveMatch(opts?: { endLive?: boolean }) {
     if (!draft?.id) return;
     setBusy(true);
     setErr("");
-    const { data, error } = await supabase
-      .from("matches")
-      .insert({
-        tournament_id: draft.id,
-        home_team_id: newMatch.homeTeamId,
-        away_team_id: newMatch.awayTeamId,
-        home_score: newMatch.homeScore,
-        away_score: newMatch.awayScore,
-        played_at: newMatch.playedAt || null,
-        notes: newMatch.notes || null,
-      })
-      .select("id")
-      .single();
-    if (error || !data) return finish(error?.message ?? "Erro ao salvar súmula.");
-    if (newMatch.goals.length) {
-      const { error: ge } = await supabase
-        .from("match_goals")
-        .insert(newMatch.goals.map((g) => ({ match_id: data.id, player_id: g.playerId, goals: g.goals })));
-      if (ge) return finish(ge.message);
+    const isLive = opts?.endLive ? false : newMatch.isLive;
+    // MVP só vale para partida encerrada (não ao vivo)
+    const mvp = isLive ? null : newMatch.mvpPlayerId;
+    const row = {
+      tournament_id: draft.id,
+      home_team_id: newMatch.homeTeamId,
+      away_team_id: newMatch.awayTeamId,
+      // placar automático: derivado dos gols (gol normal + pênalti convertido)
+      home_score: teamGoals(newMatch.events, newMatch.homeTeamId),
+      away_score: teamGoals(newMatch.events, newMatch.awayTeamId),
+      is_live: isLive,
+      mvp_player_id: mvp,
+      played_at: newMatch.playedAt || null,
+      notes: newMatch.notes || null,
+    };
+
+    let matchId = editingMatchId;
+    if (matchId) {
+      const { error } = await supabase.from("matches").update(row).eq("id", matchId);
+      if (error) return finish(error.message);
+    } else {
+      const { data, error } = await supabase.from("matches").insert(row).select("id").single();
+      if (error || !data) return finish(error?.message ?? "Erro ao salvar súmula.");
+      matchId = data.id as string;
     }
+
+    // sincroniza eventos (apaga e regrava)
+    await supabase.from("match_events").delete().eq("match_id", matchId);
+    if (newMatch.events.length) {
+      const { error: ee } = await supabase.from("match_events").insert(
+        newMatch.events.map((e) => ({
+          match_id: matchId,
+          player_id: e.playerId,
+          team_id: e.teamId,
+          type: e.type,
+          minute: e.minute,
+        })),
+      );
+      if (ee) return finish(ee.message);
+    }
+
     setBusy(false);
-    setNewMatch(emptyMatch());
     await loadSub(draft.id);
+
+    if (opts?.endLive) {
+      // partida encerrada vira súmula: continua editável para definir o MVP
+      setMsg("Partida encerrada! Súmula criada — defina o MVP, se quiser.");
+      setNewMatch((m) => ({ ...m, isLive: false }));
+      setEditingMatchId(matchId);
+      setLiveMode(false);
+      setEditorOpen(true);
+    } else {
+      setMsg(editingMatchId ? "Súmula atualizada." : isLive ? "Partida ao vivo salva." : "Súmula adicionada.");
+      if (isLive) {
+        // mantém o editor da partida ao vivo aberto para continuar atualizando
+        setEditingMatchId(matchId);
+        setEditorOpen(true);
+        setLiveMode(true);
+      } else {
+        resetMatchForm();
+      }
+    }
   }
 
   async function removeMatch(id?: string) {
@@ -218,61 +344,336 @@ export default function AdminTournamentsPage() {
 
   const scorers = computeTopScorers(matches);
   const matchTeams = draft && draft.teamIds.length ? allTeams.filter((t) => draft.teamIds.includes(t.id)) : allTeams;
+  const sumulas = matches.filter((m) => !m.isLive);
+  const liveMatches = matches.filter((m) => m.isLive);
+  // placar automático do rascunho (derivado dos gols)
+  const draftScoreA = teamGoals(newMatch.events, newMatch.homeTeamId);
+  const draftScoreB = teamGoals(newMatch.events, newMatch.awayTeamId);
 
-  const inputC = "border border-[#8d8d8d68] bg-[#1d1d1d] p-2 rounded text-sm";
+  const inputC =
+    "rounded-md bg-panel p-2 text-sm text-white focus:outline-none focus:ring-1 focus:ring-gold/50";
+
+  function renderMatchRow(m: Match) {
+    return (
+      <li
+        key={m.id}
+        className={`flex items-center justify-between rounded-md bg-panel px-3 py-2 text-sm ${
+          editingMatchId === m.id ? "ring-1 ring-gold" : ""
+        }`}
+      >
+        <div className="min-w-0">
+          <span className="font-medium">
+            {teamName(m.homeTeamId)} {m.homeScore} × {m.awayScore} {teamName(m.awayTeamId)}
+          </span>
+          {m.isLive && (
+            <span className="ml-2 rounded bg-loss px-1.5 py-0.5 text-[10px] font-bold text-white">
+              AO VIVO
+            </span>
+          )}
+          <span className="ml-2 text-xs text-faint">{m.playedAt ?? ""}</span>
+          {m.events.length > 0 && (
+            <div className="text-[10px] text-faint">
+              {m.events
+                .map(
+                  (e) =>
+                    `${eventEmoji(e.type)} ${playerName(e.playerId)}${
+                      e.minute != null ? ` ${e.minute}'` : ""
+                    }`,
+                )
+                .join("  ·  ")}
+            </div>
+          )}
+          {m.mvpPlayerId && (
+            <div className="text-[10px] font-semibold text-gold">
+              ⭐ MVP: {playerName(m.mvpPlayerId)}
+            </div>
+          )}
+        </div>
+        <div className="flex shrink-0 gap-2">
+          <button onClick={() => editMatch(m)} className="text-xs text-gold hover:underline">
+            editar
+          </button>
+          <button onClick={() => removeMatch(m.id)} className="text-xs text-loss hover:underline">
+            remover
+          </button>
+        </div>
+      </li>
+    );
+  }
+
+  function renderEditor() {
+    const bothTeams = !!newMatch.homeTeamId && !!newMatch.awayTeamId;
+    return (
+      <div className="mt-3 flex flex-col gap-2 border-t border-white/5 pt-3">
+        <div className="grid grid-cols-2 items-end gap-2 sm:grid-cols-5">
+          <label className="col-span-2 flex flex-col gap-1 text-[11px] sm:col-span-1">
+            Time A
+            <select
+              className={inputC}
+              value={newMatch.homeTeamId ?? ""}
+              onChange={(e) => setNewMatch({ ...newMatch, homeTeamId: e.target.value || null })}
+            >
+              <option value="">—</option>
+              {matchTeams.map((t) => (
+                <option key={t.id} value={t.id}>
+                  {t.name}
+                </option>
+              ))}
+            </select>
+          </label>
+          <div className="flex flex-col gap-1 text-[11px]">
+            <span>Placar (automático)</span>
+            <div className="flex h-[38px] items-center justify-center gap-2 rounded-md bg-base text-lg font-extrabold tabular-nums">
+              <span>{draftScoreA}</span>
+              <span className="text-sm text-faint">×</span>
+              <span>{draftScoreB}</span>
+            </div>
+          </div>
+          <label className="col-span-2 flex flex-col gap-1 text-[11px] sm:col-span-1">
+            Time B
+            <select
+              className={inputC}
+              value={newMatch.awayTeamId ?? ""}
+              onChange={(e) => setNewMatch({ ...newMatch, awayTeamId: e.target.value || null })}
+            >
+              <option value="">—</option>
+              {matchTeams.map((t) => (
+                <option key={t.id} value={t.id}>
+                  {t.name}
+                </option>
+              ))}
+            </select>
+          </label>
+          <label className="flex flex-col gap-1 text-[11px]">
+            Data
+            <input
+              type="date"
+              className={inputC}
+              value={newMatch.playedAt ?? ""}
+              onChange={(e) => setNewMatch({ ...newMatch, playedAt: e.target.value || null })}
+            />
+          </label>
+        </div>
+
+        {/* eventos (gols, pênaltis, assistências, cartões) */}
+        <div className="flex flex-col gap-2 rounded-md bg-panel p-2">
+          {!bothTeams ? (
+            <span className="text-[11px] text-faint">
+              Selecione os dois times para registrar os eventos dos jogadores.
+            </span>
+          ) : (
+            <>
+              <div className="flex flex-wrap items-end gap-2">
+                <label className="flex flex-col gap-1 text-[11px]">
+                  Jogador
+                  <select
+                    className={inputC}
+                    value={evPlayer}
+                    onChange={(e) => setEvPlayer(e.target.value)}
+                  >
+                    <option value="">Selecione…</option>
+                    {[newMatch.homeTeamId, newMatch.awayTeamId].map((tid) => (
+                      <optgroup key={tid} label={teamName(tid)}>
+                        {eligiblePlayers()
+                          .filter((p) => p.teamId === tid)
+                          .map((p) => (
+                            <option key={p.id} value={p.id}>
+                              {p.name}
+                            </option>
+                          ))}
+                      </optgroup>
+                    ))}
+                  </select>
+                </label>
+                <label className="flex flex-col gap-1 text-[11px]">
+                  Evento
+                  <select
+                    className={inputC}
+                    value={evType}
+                    onChange={(e) => setEvType(e.target.value as MatchEventType)}
+                  >
+                    {MATCH_EVENT_TYPES.map((t) => (
+                      <option key={t.type} value={t.type}>
+                        {t.emoji} {t.label}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+                <label className="flex w-16 flex-col gap-1 text-[11px]">
+                  Minuto
+                  <input
+                    type="number"
+                    min={0}
+                    placeholder="ex: 4"
+                    className={inputC}
+                    value={evMinute}
+                    onChange={(e) => setEvMinute(e.target.value)}
+                  />
+                </label>
+                <button
+                  onClick={addEvent}
+                  className="rounded-md bg-base px-3 py-2 text-xs hover:bg-base/70"
+                >
+                  + evento
+                </button>
+              </div>
+              {newMatch.events.length > 0 && (
+                <div className="flex flex-wrap gap-1.5">
+                  {newMatch.events.map((e, i) => (
+                    <button
+                      key={i}
+                      onClick={() => removeEvent(i)}
+                      title="Remover evento"
+                      className="rounded-md bg-base px-2 py-0.5 text-[11px]"
+                    >
+                      {eventEmoji(e.type)} {playerName(e.playerId)}
+                      {e.minute != null ? ` ${e.minute}'` : ""} ✕
+                    </button>
+                  ))}
+                </div>
+              )}
+            </>
+          )}
+        </div>
+
+        {/* MVP (só em súmula encerrada) */}
+        {liveMode ? (
+          <p className="text-[11px] text-faint">
+            ⭐ O MVP poderá ser definido após clicar em <b>Encerrar partida</b>.
+          </p>
+        ) : (
+          <label className="flex flex-col gap-1 text-[11px]">
+            <span className="font-semibold">⭐ MVP da partida</span>
+            <select
+              className={inputC}
+              value={newMatch.mvpPlayerId ?? ""}
+              onChange={(e) => setNewMatch({ ...newMatch, mvpPlayerId: e.target.value || null })}
+              disabled={!bothTeams}
+            >
+              <option value="">— Sem MVP —</option>
+              {eligiblePlayers().map((p) => (
+                <option key={p.id} value={p.id}>
+                  {p.name}
+                </option>
+              ))}
+            </select>
+          </label>
+        )}
+
+        {/* ações */}
+        <div className="flex flex-wrap items-center gap-2">
+          <button
+            onClick={() => saveMatch()}
+            disabled={busy}
+            className="rounded-md bg-gold px-4 py-2 text-sm font-bold text-[#1a1a1e] hover:opacity-90 disabled:opacity-60"
+          >
+            {busy
+              ? "Salvando…"
+              : liveMode
+                ? editingMatchId
+                  ? "Salvar ao vivo"
+                  : "Iniciar partida ao vivo"
+                : editingMatchId
+                  ? "Salvar alterações"
+                  : "Adicionar súmula"}
+          </button>
+          {liveMode && editingMatchId && (
+            <button
+              onClick={() => saveMatch({ endLive: true })}
+              disabled={busy}
+              className="rounded-md bg-loss px-4 py-2 text-sm font-bold text-white hover:opacity-90 disabled:opacity-60"
+            >
+              ⏹ Encerrar partida
+            </button>
+          )}
+          <button
+            onClick={resetMatchForm}
+            disabled={busy}
+            className="rounded-md border border-white/10 px-4 py-2 text-sm text-faint hover:bg-panel disabled:opacity-60"
+          >
+            {editingMatchId ? "Fechar" : "Cancelar"}
+          </button>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <>
       {(msg || err) && (
         <div
-          className={`p-3 mb-4 rounded-lg text-xs ${
-            err
-              ? "bg-red-950 text-red-300 border border-red-800"
-              : "bg-green-950 text-green-300 border border-green-800"
+          className={`mb-4 rounded-md p-3 text-xs ${
+            err ? "bg-loss/10 text-loss" : "bg-win/10 text-win"
           }`}
         >
           {err || msg}
         </div>
       )}
 
-      <div className="grid md:grid-cols-[280px_1fr] gap-4">
+      <div className="grid gap-4 md:grid-cols-[280px_1fr]">
         {/* LISTA */}
-        <div className="bg-[#2f2f2f] border border-[#454545] rounded-xl p-3 flex flex-col gap-3 h-max">
+        <div className="flex h-max flex-col gap-3 rounded-lg bg-card p-3">
           <button
             onClick={() => select(emptyTournament())}
-            className="bg-yellow-500 hover:bg-yellow-600 text-yellow-900 font-bold rounded-lg py-2 text-sm"
+            className="rounded-md bg-gold py-2 text-sm font-bold text-[#1a1a1e] hover:opacity-90"
           >
             + Novo torneio
           </button>
-          <ul className="flex flex-col gap-1 max-h-[60vh] overflow-y-auto text-sm">
+          <ul className="flex max-h-[60vh] flex-col gap-1 overflow-y-auto text-sm">
             {list.map((t) => (
               <li key={t.id}>
                 <button
                   onClick={() => select(t)}
-                  className={`w-full flex items-center justify-between rounded-lg px-2 py-1.5 text-left hover:bg-[#1d1d1d] ${
-                    draft?.id === t.id ? "bg-[#1d1d1d] ring-1 ring-yellow-500" : ""
+                  className={`flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-left hover:bg-panel ${
+                    draft?.id === t.id ? "bg-panel ring-1 ring-gold" : ""
                   }`}
                 >
-                  <span className="truncate">{t.name}</span>
-                  <span className="text-[10px] text-[#8d8d8d]">{t.status}</span>
+                  {t.imageUrl && (
+                    // eslint-disable-next-line @next/next/no-img-element
+                    <img
+                      src={t.imageUrl}
+                      alt=""
+                      className="h-6 w-6 shrink-0 rounded object-cover"
+                    />
+                  )}
+                  <span className="flex-1 truncate">{t.name}</span>
+                  <span className="text-[10px] text-faint">{t.status}</span>
                 </button>
               </li>
             ))}
-            {list.length === 0 && <li className="text-xs text-[#8d8d8d] px-2 py-1">Nenhum torneio.</li>}
+            {list.length === 0 && <li className="px-2 py-1 text-xs text-faint">Nenhum torneio.</li>}
           </ul>
         </div>
 
         {/* EDITOR */}
         <div className="flex flex-col gap-4">
           {!draft ? (
-            <div className="bg-[#2f2f2f] border border-[#454545] rounded-xl p-4 text-sm text-[#a9a9a9]">
+            <div className="rounded-lg bg-card p-4 text-sm text-faint">
               Selecione um torneio, ou clique em <b>+ Novo torneio</b>.
             </div>
           ) : (
             <>
               {/* BÁSICO + VÍNCULOS */}
-              <div className="bg-[#2f2f2f] border border-[#454545] rounded-xl p-4 flex flex-col gap-4">
-                <div className="grid sm:grid-cols-[1fr_180px] gap-3">
+              <div className="flex flex-col gap-4 rounded-lg bg-card p-4">
+                <div className="flex flex-col gap-4 sm:flex-row sm:items-start">
+                  <ImageUpload
+                    label="Foto do torneio (quadrada)"
+                    folder="tournaments"
+                    value={draft.logoUrl}
+                    onChange={(url) => setDraft({ ...draft, logoUrl: url })}
+                  />
+                  <div className="flex-1">
+                    <ImageUpload
+                      label="Banner do campeonato (imagem larga)"
+                      folder="tournaments"
+                      shape="wide"
+                      value={draft.imageUrl}
+                      onChange={(url) => setDraft({ ...draft, imageUrl: url })}
+                    />
+                  </div>
+                </div>
+
+                <div className="grid gap-3 sm:grid-cols-[1fr_180px]">
                   <label className="flex flex-col gap-1 text-xs">
                     Nome do torneio
                     <input
@@ -305,19 +706,57 @@ export default function AdminTournamentsPage() {
                   selected={draft.teamIds}
                   onToggle={(id) => setDraft({ ...draft, teamIds: toggle(draft.teamIds, id) })}
                 />
-                <Multi
-                  label="Jogadores vinculados"
-                  options={allPlayers}
-                  selected={draft.playerIds}
-                  onToggle={(id) => setDraft({ ...draft, playerIds: toggle(draft.playerIds, id) })}
-                />
 
-                <div className="flex justify-end gap-2 border-t border-[#454545] pt-3">
+                {/* ORGANIZADOR */}
+                <label className="flex flex-col gap-1 text-xs">
+                  <span className="font-bold">Organizador</span>
+                  <select
+                    className={inputC}
+                    value={draft.organizerId ?? ""}
+                    onChange={(e) => setDraft({ ...draft, organizerId: e.target.value || null })}
+                  >
+                    <option value="">— Sem organizador —</option>
+                    {allPlayers.map((p) => (
+                      <option key={p.id} value={p.id}>
+                        {p.name}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+
+                {/* CAMPEÃO — define os títulos contados na página do time */}
+                <label className="flex flex-col gap-1 text-xs">
+                  <span className="font-bold">🏆 Time campeão</span>
+                  {draft.teamIds.length === 0 ? (
+                    <span className="text-faint">
+                      Adicione times participantes para definir o campeão.
+                    </span>
+                  ) : (
+                    <select
+                      className={inputC}
+                      value={draft.championTeamId ?? ""}
+                      onChange={(e) =>
+                        setDraft({ ...draft, championTeamId: e.target.value || null })
+                      }
+                    >
+                      <option value="">— Sem campeão / não definido —</option>
+                      {allTeams
+                        .filter((t) => draft.teamIds.includes(t.id))
+                        .map((t) => (
+                          <option key={t.id} value={t.id}>
+                            {t.name}
+                          </option>
+                        ))}
+                    </select>
+                  )}
+                </label>
+
+                <div className="flex justify-end gap-2 border-t border-white/5 pt-3">
                   {draft.id && (
                     <button
                       onClick={removeTournament}
                       disabled={busy}
-                      className="border border-red-800 text-red-300 rounded-lg px-4 py-2 text-sm hover:bg-red-950 disabled:opacity-60"
+                      className="rounded-md border border-loss/40 px-4 py-2 text-sm text-loss hover:bg-loss/10 disabled:opacity-60"
                     >
                       Remover
                     </button>
@@ -325,7 +764,7 @@ export default function AdminTournamentsPage() {
                   <button
                     onClick={saveTournament}
                     disabled={busy}
-                    className="bg-yellow-500 hover:bg-yellow-600 text-yellow-900 font-bold rounded-lg px-5 py-2 text-sm disabled:opacity-60"
+                    className="rounded-md bg-gold px-5 py-2 text-sm font-bold text-[#1a1a1e] hover:opacity-90 disabled:opacity-60"
                   >
                     {busy ? "Salvando…" : "Salvar torneio"}
                   </button>
@@ -333,213 +772,100 @@ export default function AdminTournamentsPage() {
               </div>
 
               {!draft.id ? (
-                <div className="bg-[#2f2f2f] border border-[#454545] rounded-xl p-4 text-xs text-[#a9a9a9]">
+                <div className="rounded-lg bg-card p-4 text-xs text-faint">
                   Salve o torneio para adicionar súmulas e mensagens.
                 </div>
               ) : (
                 <>
                   {/* ARTILHARIA */}
-                  <div className="bg-[#2f2f2f] border border-[#454545] rounded-xl p-4">
-                    <h3 className="font-bold text-sm mb-2">Artilharia (automática pelas súmulas)</h3>
+                  <div className="rounded-lg bg-card p-4">
+                    <h3 className="mb-2 text-sm font-bold">Artilharia (automática pelas súmulas)</h3>
                     {scorers.length === 0 ? (
-                      <p className="text-xs text-[#8d8d8d]">Sem gols registrados ainda.</p>
+                      <p className="text-xs text-faint">Sem gols registrados ainda.</p>
                     ) : (
-                      <ol className="text-sm flex flex-col gap-1">
+                      <ol className="flex flex-col gap-1 text-sm">
                         {scorers.map((s, i) => (
                           <li key={s.playerId} className="flex justify-between">
                             <span>
-                              <span className="text-[#8d8d8d] mr-2">{i + 1}</span>
+                              <span className="mr-2 text-faint">{i + 1}</span>
                               {playerName(s.playerId)}
                             </span>
-                            <span className="text-yellow-500 font-bold">{s.goals}</span>
+                            <span className="font-bold text-gold">{s.goals}</span>
                           </li>
                         ))}
                       </ol>
                     )}
                   </div>
 
-                  {/* SÚMULAS */}
-                  <div className="bg-[#2f2f2f] border border-[#454545] rounded-xl p-4">
-                    <h3 className="font-bold text-sm mb-3">Súmulas ({matches.length})</h3>
-
-                    <ul className="flex flex-col gap-2 mb-4">
-                      {matches.map((m) => (
-                        <li
-                          key={m.id}
-                          className="flex items-center justify-between bg-[#1d1d1d] rounded-lg px-3 py-2 text-sm"
-                        >
-                          <div>
-                            <span className="font-medium">
-                              {teamName(m.homeTeamId)} {m.homeScore} × {m.awayScore}{" "}
-                              {teamName(m.awayTeamId)}
-                            </span>
-                            <span className="text-[#8d8d8d] text-xs ml-2">{m.playedAt ?? ""}</span>
-                            {m.goals.length > 0 && (
-                              <div className="text-[10px] text-[#8d8d8d]">
-                                ⚽ {m.goals.map((g) => `${playerName(g.playerId)} (${g.goals})`).join(", ")}
-                              </div>
-                            )}
-                          </div>
-                          <button
-                            onClick={() => removeMatch(m.id)}
-                            className="text-red-400 text-xs hover:underline"
-                          >
-                            remover
-                          </button>
-                        </li>
-                      ))}
-                      {matches.length === 0 && (
-                        <li className="text-xs text-[#8d8d8d]">Nenhuma súmula ainda.</li>
-                      )}
-                    </ul>
-
-                    {/* nova súmula */}
-                    <div className="border-t border-[#454545] pt-3 flex flex-col gap-2">
-                      <div className="grid grid-cols-2 sm:grid-cols-5 gap-2 items-end">
-                        <label className="flex flex-col gap-1 text-[11px] col-span-2 sm:col-span-1">
-                          Mandante
-                          <select
-                            className={inputC}
-                            value={newMatch.homeTeamId ?? ""}
-                            onChange={(e) =>
-                              setNewMatch({ ...newMatch, homeTeamId: e.target.value || null })
-                            }
-                          >
-                            <option value="">—</option>
-                            {matchTeams.map((t) => (
-                              <option key={t.id} value={t.id}>
-                                {t.name}
-                              </option>
-                            ))}
-                          </select>
-                        </label>
-                        <label className="flex flex-col gap-1 text-[11px]">
-                          Gols M
-                          <input
-                            type="number"
-                            min={0}
-                            className={inputC}
-                            value={newMatch.homeScore}
-                            onChange={(e) =>
-                              setNewMatch({ ...newMatch, homeScore: Number(e.target.value) || 0 })
-                            }
-                          />
-                        </label>
-                        <label className="flex flex-col gap-1 text-[11px]">
-                          Gols V
-                          <input
-                            type="number"
-                            min={0}
-                            className={inputC}
-                            value={newMatch.awayScore}
-                            onChange={(e) =>
-                              setNewMatch({ ...newMatch, awayScore: Number(e.target.value) || 0 })
-                            }
-                          />
-                        </label>
-                        <label className="flex flex-col gap-1 text-[11px] col-span-2 sm:col-span-1">
-                          Visitante
-                          <select
-                            className={inputC}
-                            value={newMatch.awayTeamId ?? ""}
-                            onChange={(e) =>
-                              setNewMatch({ ...newMatch, awayTeamId: e.target.value || null })
-                            }
-                          >
-                            <option value="">—</option>
-                            {matchTeams.map((t) => (
-                              <option key={t.id} value={t.id}>
-                                {t.name}
-                              </option>
-                            ))}
-                          </select>
-                        </label>
-                        <label className="flex flex-col gap-1 text-[11px]">
-                          Data
-                          <input
-                            type="date"
-                            className={inputC}
-                            value={newMatch.playedAt ?? ""}
-                            onChange={(e) =>
-                              setNewMatch({ ...newMatch, playedAt: e.target.value || null })
-                            }
-                          />
-                        </label>
-                      </div>
-
-                      {/* gols por jogador */}
-                      <div className="flex flex-wrap items-end gap-2 bg-[#1d1d1d] rounded-lg p-2">
-                        <label className="flex flex-col gap-1 text-[11px]">
-                          Goleador
-                          <select
-                            className={inputC}
-                            value={goalPlayer}
-                            onChange={(e) => setGoalPlayer(e.target.value)}
-                          >
-                            <option value="">Selecione…</option>
-                            {allPlayers.map((p) => (
-                              <option key={p.id} value={p.id}>
-                                {p.name}
-                              </option>
-                            ))}
-                          </select>
-                        </label>
-                        <label className="flex flex-col gap-1 text-[11px] w-16">
-                          Gols
-                          <input
-                            type="number"
-                            min={1}
-                            className={inputC}
-                            value={goalCount}
-                            onChange={(e) => setGoalCount(Number(e.target.value) || 1)}
-                          />
-                        </label>
-                        <button
-                          onClick={addGoal}
-                          className="border border-[#454545] rounded-lg px-3 py-2 text-xs hover:bg-[#2f2f2f]"
-                        >
-                          + gol
-                        </button>
-                        {newMatch.goals.map((g, i) => (
-                          <span
-                            key={i}
-                            className="bg-yellow-500 text-yellow-900 rounded-full px-2 py-0.5 text-[11px]"
-                          >
-                            {playerName(g.playerId)} ({g.goals})
-                          </span>
-                        ))}
-                      </div>
-
+                  {/* SÚMULAS (partidas finalizadas) */}
+                  <div className="rounded-lg bg-card p-4">
+                    <div className="mb-3 flex items-center justify-between gap-2">
+                      <h3 className="text-sm font-bold">Súmulas ({sumulas.length})</h3>
                       <button
-                        onClick={addMatch}
-                        disabled={busy}
-                        className="self-start bg-yellow-500 hover:bg-yellow-600 text-yellow-900 font-bold rounded-lg px-4 py-2 text-sm disabled:opacity-60"
+                        onClick={startSumula}
+                        className="rounded-md bg-gold px-3 py-1.5 text-xs font-bold text-[#1a1a1e] hover:opacity-90"
                       >
-                        Adicionar súmula
+                        + Nova súmula
                       </button>
                     </div>
+                    <ul className="flex flex-col gap-2">
+                      {sumulas.map((m) => renderMatchRow(m))}
+                      {sumulas.length === 0 && (
+                        <li className="text-xs text-faint">Nenhuma súmula ainda.</li>
+                      )}
+                    </ul>
+                    {editorOpen && !liveMode && renderEditor()}
+                  </div>
+
+                  {/* PARTIDA AO VIVO */}
+                  <div className="rounded-lg bg-card p-4">
+                    <div className="mb-3 flex items-center justify-between gap-2">
+                      <h3 className="flex items-center gap-2 text-sm font-bold">
+                        <span className="flex items-center gap-1.5">
+                          <span
+                            className={`h-2 w-2 rounded-full ${
+                              liveMatches.length ? "animate-pulse bg-loss" : "bg-faint"
+                            }`}
+                          />
+                          Partida ao vivo ({liveMatches.length})
+                        </span>
+                      </h3>
+                      <button
+                        onClick={startLive}
+                        className="rounded-md bg-loss px-3 py-1.5 text-xs font-bold text-white hover:opacity-90"
+                      >
+                        + Iniciar partida ao vivo
+                      </button>
+                    </div>
+                    <ul className="flex flex-col gap-2">
+                      {liveMatches.map((m) => renderMatchRow(m))}
+                      {liveMatches.length === 0 && (
+                        <li className="text-xs text-faint">Nenhuma partida ao vivo.</li>
+                      )}
+                    </ul>
+                    {editorOpen && liveMode && renderEditor()}
                   </div>
 
                   {/* MENSAGENS */}
-                  <div className="bg-[#2f2f2f] border border-[#454545] rounded-xl p-4">
-                    <h3 className="font-bold text-sm mb-3">Mensagens ({messages.length})</h3>
-                    <ul className="flex flex-col gap-2 mb-3">
+                  <div className="rounded-lg bg-card p-4">
+                    <h3 className="mb-3 text-sm font-bold">Mensagens ({messages.length})</h3>
+                    <ul className="mb-3 flex flex-col gap-2">
                       {messages.map((m) => (
                         <li
                           key={m.id}
-                          className="flex items-start justify-between bg-[#1d1d1d] rounded-lg px-3 py-2 text-sm"
+                          className="flex items-start justify-between rounded-md bg-panel px-3 py-2 text-sm"
                         >
                           <span className="whitespace-pre-wrap">{m.body}</span>
                           <button
                             onClick={() => removeMessage(m.id)}
-                            className="text-red-400 text-xs hover:underline ml-3 shrink-0"
+                            className="ml-3 shrink-0 text-xs text-loss hover:underline"
                           >
                             remover
                           </button>
                         </li>
                       ))}
                       {messages.length === 0 && (
-                        <li className="text-xs text-[#8d8d8d]">Nenhuma mensagem ainda.</li>
+                        <li className="text-xs text-faint">Nenhuma mensagem ainda.</li>
                       )}
                     </ul>
                     <div className="flex gap-2">
@@ -547,12 +873,12 @@ export default function AdminTournamentsPage() {
                         value={newMessage}
                         onChange={(e) => setNewMessage(e.target.value)}
                         placeholder="Escreva um aviso/mensagem do campeonato..."
-                        className={`${inputC} flex-1 min-h-[44px]`}
+                        className={`${inputC} min-h-[44px] flex-1`}
                       />
                       <button
                         onClick={addMessage}
                         disabled={busy}
-                        className="bg-yellow-500 hover:bg-yellow-600 text-yellow-900 font-bold rounded-lg px-4 py-2 text-sm disabled:opacity-60 self-stretch"
+                        className="self-stretch rounded-md bg-gold px-4 py-2 text-sm font-bold text-[#1a1a1e] hover:opacity-90 disabled:opacity-60"
                       >
                         Enviar
                       </button>
@@ -585,16 +911,16 @@ function Multi({
   const filtered = options.filter((o) => o.name.toLowerCase().includes(q.toLowerCase().trim()));
   return (
     <div>
-      <div className="text-xs font-bold mb-1">
+      <div className="mb-1 text-xs font-bold">
         {label} ({selected.length})
       </div>
       {selected.length > 0 && (
-        <div className="flex flex-wrap gap-1.5 mb-2">
+        <div className="mb-2 flex flex-wrap gap-1.5">
           {selected.map((id) => (
             <button
               key={id}
               onClick={() => onToggle(id)}
-              className="bg-yellow-500 text-yellow-900 rounded-full px-2 py-0.5 text-xs"
+              className="rounded-md bg-gold px-2 py-0.5 text-xs text-[#1a1a1e]"
             >
               {nameById.get(id) ?? id} ✕
             </button>
@@ -605,17 +931,17 @@ function Multi({
         value={q}
         onChange={(e) => setQ(e.target.value)}
         placeholder="Buscar para adicionar..."
-        className="text-xs border border-[#8d8d8d68] bg-[#1d1d1d] p-2 rounded w-full mb-1"
+        className="mb-1 w-full rounded-md bg-panel p-2 text-xs text-white focus:outline-none focus:ring-1 focus:ring-gold/50"
       />
-      <ul className="flex flex-col gap-0.5 max-h-[160px] overflow-y-auto text-sm border border-[#454545] rounded-lg p-1">
+      <ul className="flex max-h-[160px] flex-col gap-0.5 overflow-y-auto rounded-md bg-panel p-1 text-sm">
         {filtered.slice(0, 50).map((o) => {
           const sel = selected.includes(o.id);
           return (
             <li key={o.id}>
               <button
                 onClick={() => onToggle(o.id)}
-                className={`w-full text-left rounded px-2 py-1 hover:bg-[#1d1d1d] flex justify-between ${
-                  sel ? "text-yellow-500" : ""
+                className={`flex w-full justify-between rounded px-2 py-1 text-left hover:bg-base ${
+                  sel ? "text-gold" : ""
                 }`}
               >
                 {o.name}

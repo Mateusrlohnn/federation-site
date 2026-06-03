@@ -1,16 +1,40 @@
 @import "tailwindcss";
 
+/*
+ * Esports dashboard theme — high-contrast, dark, surgical radii.
+ * Tokens are exposed as Tailwind utilities (bg-card, text-gold, border-panel, …)
+ * via Tailwind v4's @theme. Only the presentation layer relies on these.
+ */
+@theme {
+  --color-base: #121214; /* deep graphite — page background */
+  --color-card: #1a1a1e; /* card surface (no external border) */
+  --color-panel: #222226; /* raised / inner panel */
+  --color-faint: #8a8a93; /* secondary / muted labels */
+
+  --color-win: #00e676; /* vitórias / ranks A */
+  --color-draw: #2979ff; /* empates */
+  --color-loss: #ff1744; /* derrotas */
+  --color-gold: #ffb300; /* prêmios / ranks S */
+}
+
 :root {
-  --background: #111;
+  --background: #121214;
   --foreground: #f6f6f6;
-  --option: #303030;
+  --option: #1a1a1e;
 }
 
 body {
   background: var(--background);
   color: var(--foreground);
-  font-family: Arial, Helvetica, sans-serif;
+  font-family: var(--font-geist-sans), Inter, Roboto, Arial, Helvetica, sans-serif;
   font-size: 14px;
+}
+
+/* Tailwind v4 não aplica mais cursor:pointer em botões — restaura para
+   sinalizar elementos clicáveis (links, botões, opções de seleção). */
+button:not(:disabled),
+[role="button"]:not([aria-disabled="true"]) {
+  cursor: pointer;
 }
 
 /* FontAwesome inline SVG sizing (mirrors @fortawesome base styles) */
@@ -30,4 +54,52 @@ body {
 }
 .text-shadow-lg {
   text-shadow: 0 4px 8px rgba(0, 0, 0, 0.45), 0 2px 4px rgba(0, 0, 0, 0.35);
+}
+
+/* Entrada suave do modal de perfil (evita o "seco") */
+@keyframes overlay-in {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+@keyframes modal-in {
+  from {
+    opacity: 0;
+    transform: translateY(14px) scale(0.96);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+}
+/* Reveal escalonado do conteúdo interno do card */
+@keyframes content-in {
+  from {
+    opacity: 0;
+    transform: translateY(10px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+.animate-overlay-in {
+  animation: overlay-in 200ms ease-out;
+}
+.animate-modal-in {
+  animation: modal-in 260ms cubic-bezier(0.16, 1, 0.3, 1);
+}
+.animate-content-in {
+  animation: content-in 360ms cubic-bezier(0.16, 1, 0.3, 1) both;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .animate-overlay-in,
+  .animate-modal-in,
+  .animate-content-in {
+    animation: none;
+  }
 }
