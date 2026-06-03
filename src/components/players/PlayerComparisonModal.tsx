@@ -98,7 +98,7 @@ function PlayerPicker({
                 <span className="flex h-9 w-7 shrink-0 items-end justify-center overflow-hidden rounded bg-panel">
                   {/* eslint-disable-next-line @next/next/no-img-element */}
                   <img
-                    src={avatarUrl(p.name)}
+                    src={avatarUrl(p.nick || p.name)}
                     alt={p.name}
                     className="h-[42px] w-7 object-contain"
                   />
@@ -140,7 +140,7 @@ function PlayerHead({
       <div className="flex h-44 w-40 items-end justify-center overflow-hidden">
         {/* eslint-disable-next-line @next/next/no-img-element */}
         <img
-          src={avatarUrl(player.name)}
+          src={avatarUrl(player.nick || player.name)}
           alt={player.name}
           className="h-[200px] w-40 object-contain"
         />

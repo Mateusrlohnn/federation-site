@@ -93,6 +93,47 @@ export function roundRobinRounds(n: number): number {
   return n % 2 === 0 ? n - 1 : n;
 }
 
+/**
+ * Jogos por rodada (Rodada 1, 2, ...) com o placar resolvido para os já
+ * jogados e NULO para os que ainda não aconteceram. Mostra a tabela de jogos
+ * completa, mesmo antes de as partidas serem realizadas.
+ */
+export type FixtureMatch = {
+  home: string;
+  away: string;
+  homeScore: number | null;
+  awayScore: number | null;
+};
+export type FixtureRound = { label: string; matches: FixtureMatch[] };
+
+export function roundRobinFixtures(
+  teamIds: string[],
+  matches: MatchLike[],
+  doubleRound = false,
+): FixtureRound[] {
+  const finals = matches.filter(
+    (m) => isFinal(m) && !!m.homeTeamId && !!m.awayTeamId,
+  );
+  const findScore = (a: string, b: string): { hs: number | null; as: number | null } => {
+    for (const m of finals) {
+      const h = m.homeTeamId as string;
+      const aw = m.awayTeamId as string;
+      if (h === a && aw === b) return { hs: m.homeScore, as: m.awayScore };
+      if (h === b && aw === a) return { hs: m.awayScore, as: m.homeScore };
+    }
+    return { hs: null, as: null };
+  };
+  return generateRoundRobin(teamIds, doubleRound).map((r) => ({
+    label: r.label,
+    matches: r.pairings
+      .filter((p) => p.home !== BYE && p.away !== BYE)
+      .map((p) => {
+        const { hs, as } = findScore(p.home, p.away);
+        return { home: p.home, away: p.away, homeScore: hs, awayScore: as };
+      }),
+  }));
+}
+
 // ---------------------------------------------------------------------------
 // CLASSIFICAÇÃO — derivada das partidas finalizadas (3 pts vitória, 1 empate).
 // ---------------------------------------------------------------------------

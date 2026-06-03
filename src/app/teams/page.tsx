@@ -12,7 +12,7 @@ async function getData(): Promise<{ teams: TeamDetail[]; cups: CupEntry[] }> {
     const [t, tour] = await Promise.all([
       supabase
         .from("teams")
-        .select("*, team_players(player_id, position, active, players(name, position))")
+        .select("*, team_players(player_id, position, active, players(name, nick, position))")
         .eq("active", true) // só times ON aparecem na aba Times
         .order("titles", { ascending: false }),
       supabase
@@ -33,7 +33,7 @@ async function getData(): Promise<{ teams: TeamDetail[]; cups: CupEntry[] }> {
           roster: (
             (r.team_players as
               | {
-                  players: { name: string; position?: unknown } | null;
+                  players: { name: string; nick?: string; position?: unknown } | null;
                   position?: unknown;
                   active?: unknown;
                 }[]
@@ -41,6 +41,7 @@ async function getData(): Promise<{ teams: TeamDetail[]; cups: CupEntry[] }> {
           )
             .map((x) => ({
               name: x.players?.name ?? "",
+              nick: x.players?.nick?.trim() || (x.players?.name ?? ""),
               // posição específica do time tem prioridade; senão, a natural do jogador
               position: asPosition(x.position) ?? asPosition(x.players?.position),
               active: x.active !== false,

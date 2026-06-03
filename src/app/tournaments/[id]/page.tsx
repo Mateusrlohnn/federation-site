@@ -20,7 +20,7 @@ async function getData(id: string): Promise<ScreenData | null> {
         )
         .eq("id", id)
         .single(),
-      supabase.from("players").select("id, name, position"),
+      supabase.from("players").select("id, name, nick, position"),
       supabase.from("teams").select("id, name, logo_url"),
       supabase.from("team_players").select("team_id, player_id, position, active"),
     ]);
@@ -29,11 +29,15 @@ async function getData(id: string): Promise<ScreenData | null> {
     const r = tour.data as Record<string, unknown>;
 
     const playerNames: Record<string, string> = {};
+    const playerNicks: Record<string, string> = {};
     const playerPositions: Record<string, Position | null> = {};
-    ((pl.data as { id: string; name: string; position: unknown }[]) ?? []).forEach((x) => {
-      playerNames[x.id] = x.name;
-      playerPositions[x.id] = asPosition(x.position);
-    });
+    ((pl.data as { id: string; name: string; nick: string | null; position: unknown }[]) ?? []).forEach(
+      (x) => {
+        playerNames[x.id] = x.name;
+        playerNicks[x.id] = x.nick?.trim() || x.name;
+        playerPositions[x.id] = asPosition(x.position);
+      },
+    );
 
     const teamNames: Record<string, string> = {};
     const teamLogos: Record<string, string> = {};
@@ -86,6 +90,7 @@ async function getData(id: string): Promise<ScreenData | null> {
       matches: ((r.matches as Record<string, unknown>[]) ?? []).map(matchFromRow),
       messages: (r.tournament_messages as { body: string }[]) ?? [],
       playerNames,
+      playerNicks,
       playerPositions,
       teamNames,
       teamLogos,

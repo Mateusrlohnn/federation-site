@@ -593,11 +593,17 @@ export default function AdminTournamentsPage() {
       >
         <div className="min-w-0">
           <span className="font-medium">
-            {teamName(m.homeTeamId)} {m.homeScore} × {m.awayScore} {teamName(m.awayTeamId)}
+            {teamName(m.homeTeamId)}{" "}
+            {m.scheduled ? "vs" : `${m.homeScore} × ${m.awayScore}`} {teamName(m.awayTeamId)}
           </span>
           {m.isLive && (
             <span className="ml-2 rounded bg-loss px-1.5 py-0.5 text-[10px] font-bold text-white">
               AO VIVO
+            </span>
+          )}
+          {m.scheduled && (
+            <span className="ml-2 rounded bg-draw/20 px-1.5 py-0.5 text-[10px] font-bold text-draw">
+              AGENDADA
             </span>
           )}
           <span className="ml-2 text-xs text-faint">{m.playedAt ?? ""}</span>

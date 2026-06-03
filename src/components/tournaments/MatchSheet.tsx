@@ -11,6 +11,7 @@ import { avatarUrl } from "@/lib/hof";
 
 export type SheetPlayer = {
   name: string;
+  nick?: string;
   posSigla: string | null;
   goals: number;
   goalMinutes: (number | null)[];
@@ -30,7 +31,7 @@ export type SheetData = {
 // Ordem das posições para agrupar o elenco.
 const POS_ORDER = ["GK", "ZAG", "MID", "ATK", "—"];
 
-function PlayerAvatar({ name, size = 34 }: { name: string; size?: number }) {
+function PlayerAvatar({ name, nick, size = 34 }: { name: string; nick?: string; size?: number }) {
   return (
     <span
       className="flex shrink-0 items-end justify-center overflow-hidden rounded-lg bg-base"
@@ -38,7 +39,7 @@ function PlayerAvatar({ name, size = 34 }: { name: string; size?: number }) {
     >
       {/* eslint-disable-next-line @next/next/no-img-element */}
       <img
-        src={avatarUrl(name)}
+        src={avatarUrl(nick || name)}
         alt={name}
         className="object-contain"
         style={{ width: size, height: size * 1.25 }}
@@ -51,7 +52,7 @@ function SheetRow({ p }: { p: SheetPlayer }) {
   const hasEvents = p.goals || p.assists || p.yellow || p.red || p.penaltyMisses;
   return (
     <div className="flex items-center gap-2 rounded-lg px-2 py-1.5 odd:bg-white/[0.02]">
-      <PlayerAvatar name={p.name} />
+      <PlayerAvatar name={p.name} nick={p.nick} />
       <span className="min-w-0 flex-1 truncate text-sm font-medium">{p.name}</span>
       <span className="flex flex-wrap items-center justify-end gap-1.5 text-sm">
         {p.goals > 0 && (

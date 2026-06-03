@@ -13,7 +13,12 @@ import { POSITIONS, type Position } from "@/lib/teams";
  * nem altera qualquer rota/API.
  */
 
-export type RosterEntry = { name: string; position: Position | null; active: boolean };
+export type RosterEntry = {
+  name: string;
+  nick?: string;
+  position: Position | null;
+  active: boolean;
+};
 export type CupEntry = {
   id: string;
   name: string;
@@ -59,12 +64,12 @@ function groupByPosition(members: RosterEntry[]) {
   })).filter((grp) => grp.players.length > 0);
 }
 
-function PlayerChip({ name }: { name: string }) {
+function PlayerChip({ name, nick }: { name: string; nick?: string }) {
   return (
     <span className="flex items-center gap-1.5 rounded-md bg-panel py-0.5 pl-0.5 pr-2">
       <span className="flex h-7 w-6 shrink-0 items-end justify-center overflow-hidden rounded bg-base">
         {/* eslint-disable-next-line @next/next/no-img-element */}
-        <img src={avatarUrl(name)} alt={name} className="h-[34px] w-6 object-contain" />
+        <img src={avatarUrl(nick || name)} alt={name} className="h-[34px] w-6 object-contain" />
       </span>
       <span className="text-sm font-medium">{name}</span>
     </span>
@@ -85,7 +90,7 @@ function PositionGroups({ members }: { members: RosterEntry[] }) {
           </span>
           <div className="flex flex-1 flex-wrap gap-1.5">
             {grp.players.map((p) => (
-              <PlayerChip key={p.name} name={p.name} />
+              <PlayerChip key={p.name} name={p.name} nick={p.nick} />
             ))}
           </div>
         </div>

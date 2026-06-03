@@ -71,7 +71,7 @@ export default function PlayersView({ players }: { players: HofPlayer[] }) {
 
       {/* Pódio — top 3 */}
       <div className="mb-4 grid grid-cols-3 gap-2 md:gap-4">
-        {ranked.slice(0, 3).map(({ name, points }, i) => (
+        {ranked.slice(0, 3).map(({ name, nick, points }, i) => (
           <button
             key={name}
             onClick={() => setSelected({ p: ranked[i], rank: i + 1 })}
@@ -86,7 +86,7 @@ export default function PlayersView({ players }: { players: HofPlayer[] }) {
             </span>
             <div className="flex h-[80px] w-[64px] items-end justify-center overflow-hidden">
               {/* eslint-disable-next-line @next/next/no-img-element */}
-              <img src={avatarUrl(name)} alt={name} className="h-[100px] w-[64px] object-contain" />
+              <img src={avatarUrl(nick || name)} alt={name} className="h-[100px] w-[64px] object-contain" />
             </div>
             <span className="mt-2 text-sm font-bold">{name}</span>
             <span className="text-sm font-bold text-gold">{points} pts</span>
@@ -195,7 +195,7 @@ export default function PlayersView({ players }: { players: HofPlayer[] }) {
                           <span className="flex h-11 w-9 shrink-0 items-end justify-center overflow-hidden rounded-md bg-panel ring-gold/0 transition-all duration-200 group-hover:ring-2 group-hover:ring-gold/60">
                             {/* eslint-disable-next-line @next/next/no-img-element */}
                             <img
-                              src={avatarUrl(p.name)}
+                              src={avatarUrl(p.nick || p.name)}
                               alt={p.name}
                               className="h-[52px] w-9 object-contain transition-transform duration-200 ease-out group-hover:scale-110"
                             />

@@ -127,7 +127,7 @@ export default function PlayerProfileModal({
           <div className="flex h-20 w-16 shrink-0 items-end justify-center overflow-hidden rounded-md bg-panel">
             {/* eslint-disable-next-line @next/next/no-img-element */}
             <img
-              src={avatarUrl(player.name)}
+              src={avatarUrl(player.nick || player.name)}
               alt={player.name}
               className="h-[88px] w-16 object-contain"
             />

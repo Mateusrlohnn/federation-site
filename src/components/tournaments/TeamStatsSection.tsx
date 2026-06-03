@@ -10,7 +10,7 @@ import { avatarUrl } from "@/lib/hof";
  * do time DENTRO do torneio. Somente apresentação (dados preparados na tela).
  */
 
-export type StatLeader = { name: string; value: number } | null;
+export type StatLeader = { name: string; nick?: string; value: number } | null;
 export type TeamMatchLine = {
   opponent: string;
   opponentLogo: string;
@@ -32,12 +32,12 @@ export type TeamStat = {
   topAssister: StatLeader;
   topYellow: StatLeader;
   topRed: StatLeader;
-  lineup: { sigla: string; names: string[] }[];
+  lineup: { sigla: string; players: { name: string; nick: string }[] }[];
   last: TeamMatchLine[];
   upcoming: TeamUpcoming[];
 };
 
-function Avatar({ name, size = 24 }: { name: string; size?: number }) {
+function Avatar({ name, nick, size = 24 }: { name: string; nick?: string; size?: number }) {
   return (
     <span
       className="flex shrink-0 items-end justify-center overflow-hidden rounded bg-base"
@@ -45,7 +45,7 @@ function Avatar({ name, size = 24 }: { name: string; size?: number }) {
     >
       {/* eslint-disable-next-line @next/next/no-img-element */}
       <img
-        src={avatarUrl(name)}
+        src={avatarUrl(nick || name)}
         alt={name}
         className="object-contain"
         style={{ width: size, height: size * 1.25 }}
@@ -88,7 +88,7 @@ function Leader({
       </span>
       {leader ? (
         <div className="flex items-center gap-2">
-          <Avatar name={leader.name} size={28} />
+          <Avatar name={leader.name} nick={leader.nick} size={28} />
           <span className="min-w-0 flex-1 truncate text-sm font-bold">{leader.name}</span>
           <span className="text-lg font-extrabold" style={{ color }}>
             {leader.value}
@@ -173,13 +173,13 @@ function StatModal({ t, onClose }: { t: TeamStat; onClose: () => void }) {
                     {g.sigla}
                   </span>
                   <div className="flex flex-1 flex-wrap gap-1.5">
-                    {g.names.map((n) => (
+                    {g.players.map((p) => (
                       <span
-                        key={n}
+                        key={p.name}
                         className="flex items-center gap-1.5 rounded-md bg-panel py-0.5 pl-0.5 pr-2 text-sm"
                       >
-                        <Avatar name={n} />
-                        {n}
+                        <Avatar name={p.name} nick={p.nick} />
+                        {p.name}
                       </span>
                     ))}
                   </div>

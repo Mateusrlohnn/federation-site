@@ -45,6 +45,7 @@ export type ScreenData = {
   matches: Match[];
   messages: { body: string }[];
   playerNames: Record<string, string>;
+  playerNicks: Record<string, string>;
   playerPositions: Record<string, Position | null>;
   teamNames: Record<string, string>;
   teamLogos: Record<string, string>;
@@ -57,14 +58,14 @@ const MEDALS = ["#ffb300", "#c7ccd1", "#cd7f32"]; // ouro, prata, bronze
 function ScorerList({
   items,
 }: {
-  items: { name: string; minute: number | null; penalty: boolean }[];
+  items: { name: string; nick?: string; minute: number | null; penalty: boolean }[];
 }) {
   if (!items.length) return null;
   return (
     <div className="mt-2 flex flex-col items-center gap-1">
       {items.map((s, i) => (
         <span key={i} className="flex items-center gap-1 text-xs">
-          <PlayerAvatar name={s.name} size={20} />
+          <PlayerAvatar name={s.name} nick={s.nick} size={20} />
           <span className="text-sm leading-none">⚽</span>
           {s.penalty && <span className="text-[9px] font-bold text-faint">P</span>}
           <span className="font-semibold">{s.name}</span>
@@ -86,10 +87,10 @@ function extraBadges(l: PlayerLine) {
 }
 
 /** Linha de um jogador na ficha de extras: avatar + nome + ícones. */
-function PlayerExtraRow({ name, line }: { name: string; line: PlayerLine }) {
+function PlayerExtraRow({ name, nick, line }: { name: string; nick?: string; line: PlayerLine }) {
   return (
     <div className="flex items-center gap-2">
-      <PlayerAvatar name={name} size={30} />
+      <PlayerAvatar name={name} nick={nick} size={30} />
       <span className="min-w-0 flex-1 truncate text-sm font-medium">{name}</span>
       <span className="flex shrink-0 flex-wrap items-center gap-1.5">
         {extraBadges(line).map((b, i) => (
@@ -144,8 +145,16 @@ function SectionHeader({
   );
 }
 
-/** Avatar do jogador (corpo Habbo) num quadro arredondado. */
-function PlayerAvatar({ name, size = 56 }: { name: string; size?: number }) {
+/** Avatar do jogador (corpo Habbo) num quadro arredondado. nick puxa o avatar. */
+function PlayerAvatar({
+  name,
+  nick,
+  size = 56,
+}: {
+  name: string;
+  nick?: string;
+  size?: number;
+}) {
   return (
     <span
       className="flex shrink-0 items-end justify-center overflow-hidden rounded-xl bg-panel"
@@ -153,7 +162,7 @@ function PlayerAvatar({ name, size = 56 }: { name: string; size?: number }) {
     >
       {/* eslint-disable-next-line @next/next/no-img-element */}
       <img
-        src={avatarUrl(name)}
+        src={avatarUrl(nick || name)}
         alt={name}
         className="object-contain"
         style={{ width: size, height: size * 1.25 }}
@@ -182,11 +191,13 @@ function TeamLogo({ logo, size = 40 }: { logo?: string; size?: number }) {
 function RankingPodium({
   entries,
   player,
+  nick,
   accent,
   unit,
 }: {
   entries: { playerId: string; value: number }[];
   player: (id: string) => string;
+  nick: (id: string) => string;
   accent: string;
   unit: string;
 }) {
@@ -219,7 +230,7 @@ function RankingPodium({
                 className="rounded-2xl p-0.5"
                 style={{ boxShadow: `0 0 0 2px ${MEDALS[rank]}` }}
               >
-                <PlayerAvatar name={player(e.playerId)} size={isFirst ? 76 : 60} />
+                <PlayerAvatar name={player(e.playerId)} nick={nick(e.playerId)} size={isFirst ? 76 : 60} />
               </div>
               <span className="mt-1.5 max-w-[88px] truncate text-center text-sm font-bold">
                 {player(e.playerId)}
@@ -246,7 +257,7 @@ function RankingPodium({
               <span className="w-5 text-center font-mono text-sm font-bold text-faint">
                 {i + 4}
               </span>
-              <PlayerAvatar name={player(e.playerId)} size={32} />
+              <PlayerAvatar name={player(e.playerId)} nick={nick(e.playerId)} size={32} />
               <span className="min-w-0 flex-1 truncate text-sm font-medium">
                 {player(e.playerId)}
               </span>
@@ -266,9 +277,11 @@ export default function TournamentScreen({ data }: { data: ScreenData }) {
   const team = (id: string | null) => (id ? data.teamNames[id] ?? "—" : "—");
   const logo = (id: string | null) => (id ? data.teamLogos[id] ?? "" : "");
   const player = (id: string) => data.playerNames[id] ?? id;
+  const nickOf = (id: string) => data.playerNicks?.[id] || data.playerNames[id] || id;
   const scorersOf = (m: Match, teamId: string | null) =>
     teamScorers(m.events, teamId).map((s) => ({
       name: player(s.playerId),
+      nick: nickOf(s.playerId),
       minute: s.minute,
       penalty: s.penalty,
     }));
@@ -303,6 +316,7 @@ export default function TournamentScreen({ data }: { data: ScreenData }) {
           .map((e) => e.minute);
         return {
           name: player(pid),
+          nick: nickOf(pid),
           posSigla: siglaFor(pos),
           goals: (l?.goals ?? 0) + (l?.penaltyGoals ?? 0),
           goalMinutes,
@@ -328,8 +342,13 @@ export default function TournamentScreen({ data }: { data: ScreenData }) {
   }
 
   const live = data.matches.filter((m) => m.isLive);
+  // próximas partidas (agendadas, ainda sem resultado)
+  const upcoming = data.matches
+    .filter((m) => m.scheduled)
+    .sort((a, b) => (a.playedAt ?? "~").localeCompare(b.playedAt ?? "~"));
+  // últimos jogos = finalizados (não ao vivo nem agendados)
   const recent = data.matches
-    .filter((m) => !m.isLive)
+    .filter((m) => !m.isLive && !m.scheduled)
     .sort((a, b) => (b.playedAt ?? "").localeCompare(a.playedAt ?? ""))
     .slice(0, 8);
 
@@ -354,7 +373,9 @@ export default function TournamentScreen({ data }: { data: ScreenData }) {
   // Estatísticas de cada time DENTRO do torneio (para o modal clicável).
   const top = (counts: Map<string, number>): StatLeader => {
     let best: StatLeader = null;
-    for (const [pid, v] of counts) if (v > 0 && (!best || v > best.value)) best = { name: player(pid), value: v };
+    for (const [pid, v] of counts)
+      if (v > 0 && (!best || v > best.value))
+        best = { name: player(pid), nick: nickOf(pid), value: v };
     return best;
   };
   const teamStats: TeamStat[] = data.teams.map((tm) => {
@@ -387,17 +408,22 @@ export default function TournamentScreen({ data }: { data: ScreenData }) {
         }
 
     const roster = (data.teamRosters[tm.id] ?? []).filter((r) => r.active);
+    const toPlayer = (r: { playerId: string }) => ({
+      name: player(r.playerId),
+      nick: nickOf(r.playerId),
+    });
     const lineup = POSITIONS.map((pos) => ({
       sigla: pos.sigla,
-      names: roster
+      players: roster
         .filter((r) => (r.position ?? data.playerPositions[r.playerId] ?? null) === pos.key)
-        .map((r) => player(r.playerId))
-        .sort((x, z) => x.localeCompare(z)),
-    })).filter((grp) => grp.names.length > 0);
+        .map(toPlayer)
+        .sort((x, z) => x.name.localeCompare(z.name)),
+    })).filter((grp) => grp.players.length > 0);
     const semPos = roster
       .filter((r) => (r.position ?? data.playerPositions[r.playerId] ?? null) === null)
-      .map((r) => player(r.playerId));
-    if (semPos.length) lineup.push({ sigla: "—", names: semPos.sort((x, z) => x.localeCompare(z)) });
+      .map(toPlayer);
+    if (semPos.length)
+      lineup.push({ sigla: "—", players: semPos.sort((x, z) => x.name.localeCompare(z.name)) });
 
     const opp = (m: Match) => (m.homeTeamId === tm.id ? m.awayTeamId : m.homeTeamId);
     const last = [...finishedM]
@@ -580,6 +606,7 @@ export default function TournamentScreen({ data }: { data: ScreenData }) {
             <RankingPodium
               entries={scorers.map((s) => ({ playerId: s.playerId, value: s.goals }))}
               player={player}
+              nick={nickOf}
               accent={ACCENT.gold}
               unit="g"
             />
@@ -590,11 +617,46 @@ export default function TournamentScreen({ data }: { data: ScreenData }) {
             <RankingPodium
               entries={assists.map((s) => ({ playerId: s.playerId, value: s.assists }))}
               player={player}
+              nick={nickOf}
               accent={ACCENT.draw}
               unit="a"
             />
           </section>
         </div>
+
+        {/* PRÓXIMAS PARTIDAS (agendadas, ainda sem resultado) */}
+        {upcoming.length > 0 && (
+          <section>
+            <SectionHeader icon="trophy" color={ACCENT.draw} title="Próximas partidas" />
+            <div className="grid gap-2 sm:grid-cols-2">
+              {upcoming.map((m, i) => (
+                <div
+                  key={m.id ?? i}
+                  className="flex items-center gap-3 rounded-xl bg-panel/50 px-4 py-3"
+                >
+                  <div className="flex flex-1 items-center gap-2">
+                    <TeamLogo logo={logo(m.homeTeamId)} size={32} />
+                    <span className="min-w-0 flex-1 truncate text-sm font-semibold">
+                      {team(m.homeTeamId)}
+                    </span>
+                  </div>
+                  <div className="flex shrink-0 flex-col items-center">
+                    <span className="rounded bg-base px-2 py-0.5 text-[11px] font-bold text-faint">
+                      vs
+                    </span>
+                    {m.playedAt && <span className="mt-0.5 text-[10px] text-faint">{m.playedAt}</span>}
+                  </div>
+                  <div className="flex flex-1 flex-row-reverse items-center gap-2 text-right">
+                    <TeamLogo logo={logo(m.awayTeamId)} size={32} />
+                    <span className="min-w-0 flex-1 truncate text-sm font-semibold">
+                      {team(m.awayTeamId)}
+                    </span>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </section>
+        )}
 
         {/* ÚLTIMOS JOGOS */}
         <section>
@@ -645,7 +707,7 @@ export default function TournamentScreen({ data }: { data: ScreenData }) {
                     {m.mvpPlayerId && (
                       <div className="flex items-center justify-center gap-2 border-t border-white/5 bg-gold/10 py-2">
                         <span className="text-base">⭐</span>
-                        <PlayerAvatar name={player(m.mvpPlayerId)} size={28} />
+                        <PlayerAvatar name={player(m.mvpPlayerId)} nick={nickOf(m.mvpPlayerId)} size={28} />
                         <span className="text-sm font-bold text-gold">
                           MVP: {player(m.mvpPlayerId)}
                         </span>
@@ -657,12 +719,22 @@ export default function TournamentScreen({ data }: { data: ScreenData }) {
                       <div className="grid gap-x-6 gap-y-2 border-t border-white/5 px-4 py-3 sm:grid-cols-2">
                         <div className="flex flex-col gap-2">
                           {homeExtras.map((x) => (
-                            <PlayerExtraRow key={x.playerId} name={player(x.playerId)} line={x.line} />
+                            <PlayerExtraRow
+                              key={x.playerId}
+                              name={player(x.playerId)}
+                              nick={nickOf(x.playerId)}
+                              line={x.line}
+                            />
                           ))}
                         </div>
                         <div className="flex flex-col gap-2">
                           {awayExtras.map((x) => (
-                            <PlayerExtraRow key={x.playerId} name={player(x.playerId)} line={x.line} />
+                            <PlayerExtraRow
+                              key={x.playerId}
+                              name={player(x.playerId)}
+                              nick={nickOf(x.playerId)}
+                              line={x.line}
+                            />
                           ))}
                         </div>
                       </div>
@@ -699,7 +771,7 @@ export default function TournamentScreen({ data }: { data: ScreenData }) {
                         >
                           {i === 0 ? "🥇" : i === 1 ? "🥈" : "🥉"}
                         </span>
-                        <PlayerAvatar name={player(s.playerId)} size={36} />
+                        <PlayerAvatar name={player(s.playerId)} nick={nickOf(s.playerId)} size={36} />
                         <span className="min-w-0 flex-1 truncate text-sm font-medium">
                           {player(s.playerId)}
                         </span>

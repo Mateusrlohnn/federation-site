@@ -6,6 +6,8 @@ import {
   splitGroups,
   buildKnockout,
   nextPowerOfTwo,
+  roundRobinFixtures,
+  type FixtureRound,
   computeSwissRecords,
   swissTemplate,
   swissMatchesByRecord,
@@ -124,6 +126,61 @@ function StandingsTable({
             })}
           </tbody>
         </table>
+      </div>
+    </div>
+  );
+}
+
+// ---- JOGOS POR RODADA (Rodada 1, 2, ...) — placar nulo = ainda não jogado ----
+function FixturesByRound({
+  rounds,
+  byId,
+  title = "Jogos por rodada",
+}: {
+  rounds: FixtureRound[];
+  byId: Map<string, TeamLite>;
+  title?: string;
+}) {
+  if (rounds.length === 0) return null;
+  return (
+    <div>
+      <h3 className="mb-2 text-xs font-bold uppercase tracking-wide text-faint">{title}</h3>
+      <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+        {rounds.map((r) => (
+          <div key={r.label} className="rounded-lg bg-card p-3">
+            <div className="mb-2 text-[11px] font-bold uppercase tracking-wide text-gold">
+              {r.label}
+            </div>
+            <ul className="flex flex-col gap-1">
+              {r.matches.map((m, i) => {
+                const played = m.homeScore != null && m.awayScore != null;
+                const homeWin = played && (m.homeScore as number) > (m.awayScore as number);
+                const awayWin = played && (m.awayScore as number) > (m.homeScore as number);
+                return (
+                  <li key={i} className="flex items-center gap-2 rounded-md bg-panel px-2 py-1.5 text-xs">
+                    <span className={`min-w-0 flex-1 truncate text-right ${homeWin ? "font-bold text-white" : ""}`}>
+                      {byId.get(m.home)?.name ?? "—"}
+                    </span>
+                    <span className="shrink-0 font-mono font-bold tabular-nums">
+                      {played ? (
+                        <>
+                          <span style={{ color: homeWin ? ACCENT.win : undefined }}>{m.homeScore}</span>
+                          <span className="mx-0.5 text-faint">×</span>
+                          <span style={{ color: awayWin ? ACCENT.win : undefined }}>{m.awayScore}</span>
+                        </>
+                      ) : (
+                        <span className="rounded bg-base px-1.5 py-0.5 text-[10px] text-faint">vs</span>
+                      )}
+                    </span>
+                    <span className={`min-w-0 flex-1 truncate ${awayWin ? "font-bold text-white" : ""}`}>
+                      {byId.get(m.away)?.name ?? "—"}
+                    </span>
+                  </li>
+                );
+              })}
+            </ul>
+          </div>
+        ))}
       </div>
     </div>
   );
@@ -344,7 +401,12 @@ export default function FormatView({
 
   // ---- PONTOS CORRIDOS ----
   if (format === "pontos_corridos") {
-    return <StandingsTable rows={computeStandings(teamIds, matches)} byId={byId} />;
+    return (
+      <div className="flex flex-col gap-6">
+        <StandingsTable rows={computeStandings(teamIds, matches)} byId={byId} />
+        <FixturesByRound rounds={roundRobinFixtures(teamIds, matches)} byId={byId} />
+      </div>
+    );
   }
 
   // ---- FASE DE GRUPOS + MATA-MATA ----
@@ -375,6 +437,15 @@ export default function FormatView({
             </div>
           ))}
         </div>
+        {/* jogos por rodada de cada grupo */}
+        {groups.map((g) => (
+          <FixturesByRound
+            key={`fix-${g.label}`}
+            rounds={roundRobinFixtures(g.teamIds, matches)}
+            byId={byId}
+            title={`${g.label} — jogos por rodada`}
+          />
+        ))}
         {knockout.length > 0 && (
           <div>
             <h3 className="mb-3 text-sm font-bold uppercase tracking-wide text-faint">

@@ -120,25 +120,37 @@ export default function AdminPlayersPage() {
           ) : (
             <div className="flex flex-col gap-4">
               <div className="flex items-center gap-3">
-                {draft.name.trim() && (
+                {(draft.nick.trim() || draft.name.trim()) && (
                   <span className="flex h-[60px] w-[40px] shrink-0 items-end justify-center overflow-hidden rounded-md bg-panel">
                     {/* eslint-disable-next-line @next/next/no-img-element */}
                     <img
-                      src={avatarUrl(draft.name.trim())}
+                      src={avatarUrl(draft.nick.trim() || draft.name.trim())}
                       alt={draft.name}
                       className="h-[60px] w-[40px] object-contain"
                     />
                   </span>
                 )}
-                <label className="flex flex-1 flex-col gap-1 text-xs">
-                  Nome do jogador (Hubbe)
-                  <input
-                    type="text"
-                    value={draft.name}
-                    onChange={(e) => setDraft({ ...draft, name: e.target.value })}
-                    className="rounded-md bg-panel p-2 text-sm text-white focus:outline-none focus:ring-1 focus:ring-gold/50"
-                  />
-                </label>
+                <div className="flex flex-1 flex-col gap-2">
+                  <label className="flex flex-col gap-1 text-xs">
+                    Nome do jogador (exibição)
+                    <input
+                      type="text"
+                      value={draft.name}
+                      onChange={(e) => setDraft({ ...draft, name: e.target.value })}
+                      className="rounded-md bg-panel p-2 text-sm text-white focus:outline-none focus:ring-1 focus:ring-gold/50"
+                    />
+                  </label>
+                  <label className="flex flex-col gap-1 text-xs">
+                    Nick (Hubbe) — puxa o avatar
+                    <input
+                      type="text"
+                      value={draft.nick}
+                      placeholder={draft.name || "ex.: Mathz"}
+                      onChange={(e) => setDraft({ ...draft, nick: e.target.value })}
+                      className="rounded-md bg-panel p-2 text-sm text-white placeholder:text-faint focus:outline-none focus:ring-1 focus:ring-gold/50"
+                    />
+                  </label>
+                </div>
                 <label className="flex w-40 flex-col gap-1 text-xs">
                   Posição natural
                   <select

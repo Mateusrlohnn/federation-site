@@ -4,6 +4,7 @@ import { asPosition, type Position } from "@/lib/teams";
 export type HofPlayer = {
   id?: string;
   name: string;
+  nick: string; // conta do Hubbe (puxa o avatar); cai no name se vazio
   position: Position | null; // posição natural (opcional)
   titles: number;
   runnerUps: number;
@@ -20,7 +21,7 @@ export type HofPlayer = {
   points: number;
 };
 
-export type StatKey = Exclude<keyof HofPlayer, "id" | "name" | "points" | "position">;
+export type StatKey = Exclude<keyof HofPlayer, "id" | "name" | "nick" | "points" | "position">;
 
 /** Single source of truth: app field <-> DB column <-> scoring weight. */
 export const STAT_FIELDS: { key: StatKey; col: string; label: string; weight: number }[] = [
@@ -53,9 +54,13 @@ const AVATAR_OVERRIDES: Record<string, string> = {
   protectedgod: "Modric",
 };
 
-export function avatarUrl(name: string) {
-  const account = AVATAR_OVERRIDES[name.trim().toLowerCase()] ?? name;
-  return `https://hubbe.biz/avatar/${encodeURIComponent(account)}.png`;
+export function avatarUrl(nick: string) {
+  const key = (nick ?? "").trim();
+  const account = AVATAR_OVERRIDES[key.toLowerCase()] ?? key;
+  // Formato do gerador (hubbe.biz / Portal Duckets) — corpo inteiro (size=b).
+  return `https://hubbe.biz/avatar/${encodeURIComponent(
+    account,
+  )}?action=std&direction=2&head_direction=2&gesture=std&size=b&headonly=0&img_format=png`;
 }
 
 /** Compute points from the weighted stats (mirrors the DB generated column). */
@@ -68,6 +73,7 @@ export function fromRow(r: Record<string, unknown>): HofPlayer {
   const p = {
     id: r.id as string,
     name: String(r.name),
+    nick: (r.nick as string)?.trim() || String(r.name),
     position: asPosition(r.position),
   } as HofPlayer;
   for (const f of STAT_FIELDS) p[f.key] = Number(r[f.col]) || 0;
@@ -79,6 +85,7 @@ export function fromRow(r: Record<string, unknown>): HofPlayer {
 export function toRow(p: HofPlayer): Record<string, string | number | null> {
   const r: Record<string, string | number | null> = {
     name: p.name.trim(),
+    nick: (p.nick || p.name).trim(),
     position: p.position ?? null,
   };
   for (const f of STAT_FIELDS) r[f.col] = Number(p[f.key]) || 0;
@@ -87,7 +94,7 @@ export function toRow(p: HofPlayer): Record<string, string | number | null> {
 
 /** Empty player for the "create" form. */
 export function emptyPlayer(): HofPlayer {
-  const p = { name: "", position: null, points: 0 } as HofPlayer;
+  const p = { name: "", nick: "", position: null, points: 0 } as HofPlayer;
   for (const f of STAT_FIELDS) p[f.key] = 0;
   return p;
 }
@@ -98,6 +105,7 @@ export const fallbackPlayers: HofPlayer[] = (
 ).map((p) => {
   const o = {
     name: String(p.name),
+    nick: (p.nick as string)?.trim() || String(p.name),
     position: asPosition(p.position),
     points: Number(p.points) || 0,
   } as HofPlayer;
