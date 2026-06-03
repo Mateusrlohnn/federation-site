@@ -1,6 +1,6 @@
 # Federação Rebug
 
-Site da Federação Rebug (futebol 1Q do Hubbe) — feito com **Next.js 16 + Tailwind v4 + Supabase**.
+Site da Federação Rebug — feito com **Next.js 16 + Tailwind v4 + Supabase**.
 
 ## Estrutura do projeto
 
