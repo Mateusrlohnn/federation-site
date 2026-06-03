@@ -2,6 +2,8 @@
 
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { createClient } from "@/lib/supabase/client";
+import Icon from "@/components/ui/Icon";
+import ImageUpload from "@/components/ui/ImageUpload";
 import { TEAM_FIELDS, emptyTeam, teamFromRow, teamToRow, type Team } from "@/lib/teams";
 
 type PlayerLite = { id: string; name: string };
@@ -113,26 +115,24 @@ export default function AdminTeamsPage() {
     <>
       {(msg || err) && (
         <div
-          className={`p-3 mb-4 rounded-lg text-xs ${
-            err
-              ? "bg-red-950 text-red-300 border border-red-800"
-              : "bg-green-950 text-green-300 border border-green-800"
+          className={`mb-4 rounded-md p-3 text-xs ${
+            err ? "bg-loss/10 text-loss" : "bg-win/10 text-win"
           }`}
         >
           {err || msg}
         </div>
       )}
 
-      <div className="grid md:grid-cols-[300px_1fr] gap-4">
+      <div className="grid gap-4 md:grid-cols-[300px_1fr]">
         {/* LISTA DE TIMES */}
-        <div className="bg-[#2f2f2f] border border-[#454545] rounded-xl p-3 flex flex-col gap-3 h-max">
+        <div className="flex h-max flex-col gap-3 rounded-lg bg-card p-3">
           <button
             onClick={() => {
               setDraft(emptyTeam());
               setErr("");
               setMsg("");
             }}
-            className="bg-yellow-500 hover:bg-yellow-600 text-yellow-900 font-bold rounded-lg py-2 text-sm"
+            className="rounded-md bg-gold py-2 text-sm font-bold text-[#1a1a1e] hover:opacity-90"
           >
             + Novo time
           </button>
@@ -141,9 +141,9 @@ export default function AdminTeamsPage() {
             value={q}
             onChange={(e) => setQ(e.target.value)}
             placeholder="Buscar time..."
-            className="text-xs border border-[#8d8d8d68] bg-[#1d1d1d] p-2 rounded"
+            className="rounded-md bg-panel p-2 text-xs text-white focus:outline-none focus:ring-1 focus:ring-gold/50"
           />
-          <ul className="flex flex-col gap-1 max-h-[60vh] overflow-y-auto text-sm">
+          <ul className="flex max-h-[60vh] flex-col gap-1 overflow-y-auto text-sm">
             {filteredTeams.map((t) => (
               <li key={t.id ?? t.name}>
                 <button
@@ -152,40 +152,55 @@ export default function AdminTeamsPage() {
                     setErr("");
                     setMsg("");
                   }}
-                  className={`w-full flex items-center justify-between rounded-lg px-2 py-1.5 text-left hover:bg-[#1d1d1d] ${
-                    draft?.id && draft.id === t.id ? "bg-[#1d1d1d] ring-1 ring-yellow-500" : ""
+                  className={`flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-left hover:bg-panel ${
+                    draft?.id && draft.id === t.id ? "bg-panel ring-1 ring-gold" : ""
                   }`}
                 >
-                  <span className="truncate">{t.name}</span>
-                  <span className="text-[#8d8d8d] text-xs">{t.playerIds.length} jog.</span>
+                  <span className="flex h-6 w-6 shrink-0 items-center justify-center overflow-hidden rounded bg-base">
+                    {t.logoUrl ? (
+                      // eslint-disable-next-line @next/next/no-img-element
+                      <img src={t.logoUrl} alt="" className="h-full w-full object-cover" />
+                    ) : (
+                      <Icon name="shield" className="text-[10px] text-faint" />
+                    )}
+                  </span>
+                  <span className="flex-1 truncate">{t.name}</span>
+                  <span className="text-xs text-faint">{t.playerIds.length} jog.</span>
                 </button>
               </li>
             ))}
             {filteredTeams.length === 0 && (
-              <li className="text-xs text-[#8d8d8d] px-2 py-1">Nenhum time ainda.</li>
+              <li className="px-2 py-1 text-xs text-faint">Nenhum time ainda.</li>
             )}
           </ul>
         </div>
 
         {/* EDITOR */}
-        <div className="bg-[#2f2f2f] border border-[#454545] rounded-xl p-4">
+        <div className="rounded-lg bg-card p-4">
           {!draft ? (
-            <p className="text-[#a9a9a9] text-sm">
+            <p className="text-sm text-faint">
               Selecione um time, ou clique em <b>+ Novo time</b>.
             </p>
           ) : (
             <div className="flex flex-col gap-4">
+              <ImageUpload
+                label="Foto do time"
+                folder="teams"
+                value={draft.logoUrl}
+                onChange={(url) => setDraft({ ...draft, logoUrl: url })}
+              />
+
               <label className="flex flex-col gap-1 text-xs">
                 Nome do time
                 <input
                   type="text"
                   value={draft.name}
                   onChange={(e) => setDraft({ ...draft, name: e.target.value })}
-                  className="border border-[#8d8d8d68] bg-[#1d1d1d] p-2 rounded text-sm"
+                  className="rounded-md bg-panel p-2 text-sm text-white focus:outline-none focus:ring-1 focus:ring-gold/50"
                 />
               </label>
 
-              <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+              <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
                 {TEAM_FIELDS.map((f) => (
                   <label key={f.key} className="flex flex-col gap-1 text-xs">
                     {f.label}
@@ -194,24 +209,24 @@ export default function AdminTeamsPage() {
                       min={0}
                       value={draft[f.key]}
                       onChange={(e) => setDraft({ ...draft, [f.key]: Number(e.target.value) || 0 })}
-                      className="border border-[#8d8d8d68] bg-[#1d1d1d] p-2 rounded"
+                      className="rounded-md bg-panel p-2 text-white focus:outline-none focus:ring-1 focus:ring-gold/50"
                     />
                   </label>
                 ))}
               </div>
 
               {/* ELENCO */}
-              <div className="border-t border-[#454545] pt-3">
-                <div className="flex items-center justify-between mb-2">
+              <div className="border-t border-white/5 pt-3">
+                <div className="mb-2 flex items-center justify-between">
                   <span className="text-sm font-bold">Elenco ({draft.playerIds.length})</span>
                 </div>
                 {draft.playerIds.length > 0 && (
-                  <div className="flex flex-wrap gap-1.5 mb-2">
+                  <div className="mb-2 flex flex-wrap gap-1.5">
                     {draft.playerIds.map((id) => (
                       <button
                         key={id}
                         onClick={() => togglePlayer(id)}
-                        className="flex items-center gap-1 bg-yellow-500 text-yellow-900 rounded-full px-2 py-0.5 text-xs font-medium"
+                        className="flex items-center gap-1 rounded-md bg-gold px-2 py-0.5 text-xs font-medium text-[#1a1a1e]"
                         title="Remover do elenco"
                       >
                         {nameById.get(id) ?? id} ✕
@@ -224,17 +239,17 @@ export default function AdminTeamsPage() {
                   value={rosterQ}
                   onChange={(e) => setRosterQ(e.target.value)}
                   placeholder="Buscar jogador para adicionar..."
-                  className="text-xs border border-[#8d8d8d68] bg-[#1d1d1d] p-2 rounded w-full mb-2"
+                  className="mb-2 w-full rounded-md bg-panel p-2 text-xs text-white focus:outline-none focus:ring-1 focus:ring-gold/50"
                 />
-                <ul className="flex flex-col gap-0.5 max-h-[200px] overflow-y-auto text-sm border border-[#454545] rounded-lg p-1">
+                <ul className="flex max-h-[200px] flex-col gap-0.5 overflow-y-auto rounded-md bg-panel p-1 text-sm">
                   {filteredPlayers.slice(0, 60).map((p) => {
                     const sel = draft.playerIds.includes(p.id);
                     return (
                       <li key={p.id}>
                         <button
                           onClick={() => togglePlayer(p.id)}
-                          className={`w-full text-left rounded px-2 py-1 hover:bg-[#1d1d1d] flex items-center justify-between ${
-                            sel ? "text-yellow-500" : ""
+                          className={`flex w-full items-center justify-between rounded px-2 py-1 text-left hover:bg-base ${
+                            sel ? "text-gold" : ""
                           }`}
                         >
                           {p.name}
@@ -246,12 +261,12 @@ export default function AdminTeamsPage() {
                 </ul>
               </div>
 
-              <div className="flex items-center justify-end gap-2 border-t border-[#454545] pt-3">
+              <div className="flex items-center justify-end gap-2 border-t border-white/5 pt-3">
                 {draft.id && (
                   <button
                     onClick={remove}
                     disabled={busy}
-                    className="border border-red-800 text-red-300 rounded-lg px-4 py-2 text-sm hover:bg-red-950 disabled:opacity-60"
+                    className="rounded-md border border-loss/40 px-4 py-2 text-sm text-loss hover:bg-loss/10 disabled:opacity-60"
                   >
                     Remover
                   </button>
@@ -259,7 +274,7 @@ export default function AdminTeamsPage() {
                 <button
                   onClick={save}
                   disabled={busy}
-                  className="bg-yellow-500 hover:bg-yellow-600 text-yellow-900 font-bold rounded-lg px-5 py-2 text-sm disabled:opacity-60"
+                  className="rounded-md bg-gold px-5 py-2 text-sm font-bold text-[#1a1a1e] hover:opacity-90 disabled:opacity-60"
                 >
                   {busy ? "Salvando…" : "Salvar"}
                 </button>

@@ -10,6 +10,7 @@ export type Tournament = {
   id?: string;
   name: string;
   status: TournamentStatus;
+  imageUrl: string; // foto do campeonato (URL pública no Storage)
   teamIds: string[];
   playerIds: string[];
 };
@@ -30,7 +31,7 @@ export type Match = {
 export type TournamentMessage = { id: string; body: string; createdAt: string };
 
 export function emptyTournament(): Tournament {
-  return { name: "", status: "Em andamento", teamIds: [], playerIds: [] };
+  return { name: "", status: "Em andamento", imageUrl: "", teamIds: [], playerIds: [] };
 }
 
 export function emptyMatch(): Match {
@@ -52,6 +53,7 @@ export function tournamentFromRow(r: Record<string, unknown>): Tournament {
     id: r.id as string,
     name: String(r.name),
     status: (r.status as TournamentStatus) ?? "Em andamento",
+    imageUrl: (r.image_url as string) ?? "",
     teamIds: teams.map((x) => x.team_id),
     playerIds: players.map((x) => x.player_id),
   };

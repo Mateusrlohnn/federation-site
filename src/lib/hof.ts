@@ -36,8 +36,24 @@ export const STAT_FIELDS: { key: StatKey; col: string; label: string; weight: nu
   { key: "t3Academy", col: "t3_academy", label: "Top 3 Academy", weight: 1 },
 ];
 
+/**
+ * Jogadores que jogam sob outra conta do Hubbe — exibe o avatar dessa conta.
+ * Chave em minúsculas (comparação case-insensitive).
+ */
+const AVATAR_OVERRIDES: Record<string, string> = {
+  pegaso: "LebronGames",
+  goenji: "Levi",
+  deslocado: "Gabriel",
+  "juninho pernanbucano": "Zico",
+  ansaldi: "vrzada",
+  plaay: "Beel",
+  aduzn: "adu",
+  protectedgod: "Modric",
+};
+
 export function avatarUrl(name: string) {
-  return `https://hubbe.biz/avatar/${encodeURIComponent(name)}.png`;
+  const account = AVATAR_OVERRIDES[name.trim().toLowerCase()] ?? name;
+  return `https://hubbe.biz/avatar/${encodeURIComponent(account)}.png`;
 }
 
 /** Compute points from the weighted stats (mirrors the DB generated column). */

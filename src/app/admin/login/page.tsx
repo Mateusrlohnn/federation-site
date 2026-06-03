@@ -35,13 +35,13 @@ export default function AdminLoginPage() {
     <div className="flex items-center justify-center px-5 py-20">
       <form
         onSubmit={onSubmit}
-        className="w-full max-w-sm bg-[#2f2f2f] border border-[#454545] rounded-xl p-6 flex flex-col gap-4"
+        className="flex w-full max-w-sm flex-col gap-4 rounded-lg bg-card p-6"
       >
-        <h1 className="text-xl font-bold flex items-center">
-          <Icon name="shield" className="text-yellow-500 mr-2" />
+        <h1 className="flex items-center gap-2 text-xl font-bold tracking-tight">
+          <Icon name="shield" className="text-gold" />
           Painel Admin
         </h1>
-        <p className="text-xs text-[#a9a9a9]">Acesso restrito aos administradores da Federação Rebug.</p>
+        <p className="text-xs text-faint">Acesso restrito aos administradores da Federação Rebug.</p>
 
         <label className="flex flex-col gap-1 text-xs">
           E-mail
@@ -50,7 +50,7 @@ export default function AdminLoginPage() {
             value={email}
             onChange={(e) => setEmail(e.target.value)}
             required
-            className="border border-[#8d8d8d68] bg-[#1d1d1d] p-2 rounded"
+            className="rounded-md bg-panel p-2 text-white focus:outline-none focus:ring-1 focus:ring-gold/50"
           />
         </label>
         <label className="flex flex-col gap-1 text-xs">
@@ -60,16 +60,16 @@ export default function AdminLoginPage() {
             value={password}
             onChange={(e) => setPassword(e.target.value)}
             required
-            className="border border-[#8d8d8d68] bg-[#1d1d1d] p-2 rounded"
+            className="rounded-md bg-panel p-2 text-white focus:outline-none focus:ring-1 focus:ring-gold/50"
           />
         </label>
 
-        {error && <p className="text-xs text-red-400">{error}</p>}
+        {error && <p className="text-xs text-loss">{error}</p>}
 
         <button
           type="submit"
           disabled={loading}
-          className="bg-yellow-500 hover:bg-yellow-600 text-yellow-900 font-bold rounded-lg py-2 disabled:opacity-60"
+          className="rounded-md bg-gold py-2 font-bold text-[#1a1a1e] hover:opacity-90 disabled:opacity-60"
         >
           {loading ? "Entrando..." : "Entrar"}
         </button>

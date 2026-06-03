@@ -1,6 +1,7 @@
 export type Team = {
   id?: string;
   name: string;
+  logoUrl: string; // foto do time (URL pública no Storage)
   titles: number;
   runnerUps: number;
   wins: number;
@@ -18,7 +19,7 @@ export const TEAM_FIELDS: { key: TeamFieldKey; col: string; label: string }[] = 
 ];
 
 export function emptyTeam(): Team {
-  return { name: "", titles: 0, runnerUps: 0, wins: 0, losses: 0, playerIds: [] };
+  return { name: "", logoUrl: "", titles: 0, runnerUps: 0, wins: 0, losses: 0, playerIds: [] };
 }
 
 /** Supabase row (com team_players embutido) -> Team */
@@ -27,6 +28,7 @@ export function teamFromRow(r: Record<string, unknown>): Team {
   return {
     id: r.id as string,
     name: String(r.name),
+    logoUrl: (r.logo_url as string) ?? "",
     titles: Number(r.titles) || 0,
     runnerUps: Number(r.runner_ups) || 0,
     wins: Number(r.wins) || 0,
@@ -36,9 +38,10 @@ export function teamFromRow(r: Record<string, unknown>): Team {
 }
 
 /** Team -> row para gravar (sem id/elenco; elenco vai na join table) */
-export function teamToRow(t: Team): Record<string, string | number> {
+export function teamToRow(t: Team): Record<string, string | number | null> {
   return {
     name: t.name.trim(),
+    logo_url: t.logoUrl?.trim() || null,
     titles: Number(t.titles) || 0,
     runner_ups: Number(t.runnerUps) || 0,
     wins: Number(t.wins) || 0,

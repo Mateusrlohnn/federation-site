@@ -63,25 +63,23 @@ export default function AdminPlayersPage() {
     <>
       {(msg || err) && (
         <div
-          className={`p-3 mb-4 rounded-lg text-xs ${
-            err
-              ? "bg-red-950 text-red-300 border border-red-800"
-              : "bg-green-950 text-green-300 border border-green-800"
+          className={`mb-4 rounded-md p-3 text-xs ${
+            err ? "bg-loss/10 text-loss" : "bg-win/10 text-win"
           }`}
         >
           {err || msg}
         </div>
       )}
 
-      <div className="grid md:grid-cols-[300px_1fr] gap-4">
-        <div className="bg-[#2f2f2f] border border-[#454545] rounded-xl p-3 flex flex-col gap-3 h-max">
+      <div className="grid gap-4 md:grid-cols-[300px_1fr]">
+        <div className="flex h-max flex-col gap-3 rounded-lg bg-card p-3">
           <button
             onClick={() => {
               setDraft(emptyPlayer());
               setErr("");
               setMsg("");
             }}
-            className="bg-yellow-500 hover:bg-yellow-600 text-yellow-900 font-bold rounded-lg py-2 text-sm"
+            className="rounded-md bg-gold py-2 text-sm font-bold text-[#1a1a1e] hover:opacity-90"
           >
             + Novo jogador
           </button>
@@ -90,9 +88,9 @@ export default function AdminPlayersPage() {
             value={q}
             onChange={(e) => setQ(e.target.value)}
             placeholder="Buscar..."
-            className="text-xs border border-[#8d8d8d68] bg-[#1d1d1d] p-2 rounded"
+            className="rounded-md bg-panel p-2 text-xs text-white focus:outline-none focus:ring-1 focus:ring-gold/50"
           />
-          <ul className="flex flex-col gap-1 max-h-[60vh] overflow-y-auto text-sm">
+          <ul className="flex max-h-[60vh] flex-col gap-1 overflow-y-auto text-sm">
             {filtered.map((p) => (
               <li key={p.id ?? p.name}>
                 <button
@@ -101,51 +99,53 @@ export default function AdminPlayersPage() {
                     setErr("");
                     setMsg("");
                   }}
-                  className={`w-full flex items-center justify-between rounded-lg px-2 py-1.5 text-left hover:bg-[#1d1d1d] ${
-                    draft?.id && draft.id === p.id ? "bg-[#1d1d1d] ring-1 ring-yellow-500" : ""
+                  className={`flex w-full items-center justify-between rounded-md px-2 py-1.5 text-left hover:bg-panel ${
+                    draft?.id && draft.id === p.id ? "bg-panel ring-1 ring-gold" : ""
                   }`}
                 >
                   <span className="truncate">{p.name}</span>
-                  <span className="text-yellow-500 font-mono text-xs">{p.points}</span>
+                  <span className="font-mono text-xs text-gold">{p.points}</span>
                 </button>
               </li>
             ))}
           </ul>
         </div>
 
-        <div className="bg-[#2f2f2f] border border-[#454545] rounded-xl p-4">
+        <div className="rounded-lg bg-card p-4">
           {!draft ? (
-            <p className="text-[#a9a9a9] text-sm">
+            <p className="text-sm text-faint">
               Selecione um jogador, ou clique em <b>+ Novo jogador</b>.
             </p>
           ) : (
             <div className="flex flex-col gap-4">
               <div className="flex items-center gap-3">
                 {draft.name.trim() && (
-                  // eslint-disable-next-line @next/next/no-img-element
-                  <img
-                    src={avatarUrl(draft.name.trim())}
-                    alt={draft.name}
-                    className="h-[60px] w-[40px] object-contain"
-                  />
+                  <span className="flex h-[60px] w-[40px] shrink-0 items-end justify-center overflow-hidden rounded-md bg-panel">
+                    {/* eslint-disable-next-line @next/next/no-img-element */}
+                    <img
+                      src={avatarUrl(draft.name.trim())}
+                      alt={draft.name}
+                      className="h-[60px] w-[40px] object-contain"
+                    />
+                  </span>
                 )}
-                <label className="flex-1 flex flex-col gap-1 text-xs">
+                <label className="flex flex-1 flex-col gap-1 text-xs">
                   Nome do jogador (Hubbe)
                   <input
                     type="text"
                     value={draft.name}
                     onChange={(e) => setDraft({ ...draft, name: e.target.value })}
-                    className="border border-[#8d8d8d68] bg-[#1d1d1d] p-2 rounded text-sm"
+                    className="rounded-md bg-panel p-2 text-sm text-white focus:outline-none focus:ring-1 focus:ring-gold/50"
                   />
                 </label>
               </div>
 
-              <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
+              <div className="grid grid-cols-2 gap-3 sm:grid-cols-3">
                 {STAT_FIELDS.map((f) => (
                   <label key={f.key} className="flex flex-col gap-1 text-xs">
                     <span className="flex items-center justify-between">
                       {f.label}
-                      <span className="text-[#777]">×{f.weight}</span>
+                      <span className="text-faint">×{f.weight}</span>
                     </span>
                     <input
                       type="number"
@@ -154,22 +154,22 @@ export default function AdminPlayersPage() {
                       onChange={(e) =>
                         setDraft({ ...draft, [f.key]: Number(e.target.value) || 0 })
                       }
-                      className="border border-[#8d8d8d68] bg-[#1d1d1d] p-2 rounded"
+                      className="rounded-md bg-panel p-2 text-white focus:outline-none focus:ring-1 focus:ring-gold/50"
                     />
                   </label>
                 ))}
               </div>
 
-              <div className="flex items-center justify-between border-t border-[#454545] pt-3">
+              <div className="flex items-center justify-between border-t border-white/5 pt-3">
                 <div className="text-sm">
-                  Pontos: <span className="text-yellow-500 font-bold text-lg">{livePoints}</span>
+                  Pontos: <span className="text-lg font-bold text-gold">{livePoints}</span>
                 </div>
                 <div className="flex gap-2">
                   {draft.id && (
                     <button
                       onClick={remove}
                       disabled={busy}
-                      className="border border-red-800 text-red-300 rounded-lg px-4 py-2 text-sm hover:bg-red-950 disabled:opacity-60"
+                      className="rounded-md border border-loss/40 px-4 py-2 text-sm text-loss hover:bg-loss/10 disabled:opacity-60"
                     >
                       Remover
                     </button>
@@ -177,7 +177,7 @@ export default function AdminPlayersPage() {
                   <button
                     onClick={save}
                     disabled={busy}
-                    className="bg-yellow-500 hover:bg-yellow-600 text-yellow-900 font-bold rounded-lg px-5 py-2 text-sm disabled:opacity-60"
+                    className="rounded-md bg-gold px-5 py-2 text-sm font-bold text-[#1a1a1e] hover:opacity-90 disabled:opacity-60"
                   >
                     {busy ? "Salvando…" : "Salvar"}
                   </button>

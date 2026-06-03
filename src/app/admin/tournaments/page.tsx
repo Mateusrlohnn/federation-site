@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { createClient } from "@/lib/supabase/client";
+import ImageUpload from "@/components/ui/ImageUpload";
 import {
   TOURNAMENT_STATUSES,
   emptyTournament,
@@ -109,7 +110,11 @@ export default function AdminTournamentsPage() {
     setErr("");
     setMsg("");
     let tid = draft.id;
-    const row = { name: draft.name.trim(), status: draft.status };
+    const row = {
+      name: draft.name.trim(),
+      status: draft.status,
+      image_url: draft.imageUrl?.trim() || null,
+    };
     if (tid) {
       const { error } = await supabase.from("tournaments").update(row).eq("id", tid);
       if (error) return finish(error.message);
@@ -219,60 +224,75 @@ export default function AdminTournamentsPage() {
   const scorers = computeTopScorers(matches);
   const matchTeams = draft && draft.teamIds.length ? allTeams.filter((t) => draft.teamIds.includes(t.id)) : allTeams;
 
-  const inputC = "border border-[#8d8d8d68] bg-[#1d1d1d] p-2 rounded text-sm";
+  const inputC =
+    "rounded-md bg-panel p-2 text-sm text-white focus:outline-none focus:ring-1 focus:ring-gold/50";
 
   return (
     <>
       {(msg || err) && (
         <div
-          className={`p-3 mb-4 rounded-lg text-xs ${
-            err
-              ? "bg-red-950 text-red-300 border border-red-800"
-              : "bg-green-950 text-green-300 border border-green-800"
+          className={`mb-4 rounded-md p-3 text-xs ${
+            err ? "bg-loss/10 text-loss" : "bg-win/10 text-win"
           }`}
         >
           {err || msg}
         </div>
       )}
 
-      <div className="grid md:grid-cols-[280px_1fr] gap-4">
+      <div className="grid gap-4 md:grid-cols-[280px_1fr]">
         {/* LISTA */}
-        <div className="bg-[#2f2f2f] border border-[#454545] rounded-xl p-3 flex flex-col gap-3 h-max">
+        <div className="flex h-max flex-col gap-3 rounded-lg bg-card p-3">
           <button
             onClick={() => select(emptyTournament())}
-            className="bg-yellow-500 hover:bg-yellow-600 text-yellow-900 font-bold rounded-lg py-2 text-sm"
+            className="rounded-md bg-gold py-2 text-sm font-bold text-[#1a1a1e] hover:opacity-90"
           >
             + Novo torneio
           </button>
-          <ul className="flex flex-col gap-1 max-h-[60vh] overflow-y-auto text-sm">
+          <ul className="flex max-h-[60vh] flex-col gap-1 overflow-y-auto text-sm">
             {list.map((t) => (
               <li key={t.id}>
                 <button
                   onClick={() => select(t)}
-                  className={`w-full flex items-center justify-between rounded-lg px-2 py-1.5 text-left hover:bg-[#1d1d1d] ${
-                    draft?.id === t.id ? "bg-[#1d1d1d] ring-1 ring-yellow-500" : ""
+                  className={`flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-left hover:bg-panel ${
+                    draft?.id === t.id ? "bg-panel ring-1 ring-gold" : ""
                   }`}
                 >
-                  <span className="truncate">{t.name}</span>
-                  <span className="text-[10px] text-[#8d8d8d]">{t.status}</span>
+                  {t.imageUrl && (
+                    // eslint-disable-next-line @next/next/no-img-element
+                    <img
+                      src={t.imageUrl}
+                      alt=""
+                      className="h-6 w-6 shrink-0 rounded object-cover"
+                    />
+                  )}
+                  <span className="flex-1 truncate">{t.name}</span>
+                  <span className="text-[10px] text-faint">{t.status}</span>
                 </button>
               </li>
             ))}
-            {list.length === 0 && <li className="text-xs text-[#8d8d8d] px-2 py-1">Nenhum torneio.</li>}
+            {list.length === 0 && <li className="px-2 py-1 text-xs text-faint">Nenhum torneio.</li>}
           </ul>
         </div>
 
         {/* EDITOR */}
         <div className="flex flex-col gap-4">
           {!draft ? (
-            <div className="bg-[#2f2f2f] border border-[#454545] rounded-xl p-4 text-sm text-[#a9a9a9]">
+            <div className="rounded-lg bg-card p-4 text-sm text-faint">
               Selecione um torneio, ou clique em <b>+ Novo torneio</b>.
             </div>
           ) : (
             <>
               {/* BÁSICO + VÍNCULOS */}
-              <div className="bg-[#2f2f2f] border border-[#454545] rounded-xl p-4 flex flex-col gap-4">
-                <div className="grid sm:grid-cols-[1fr_180px] gap-3">
+              <div className="flex flex-col gap-4 rounded-lg bg-card p-4">
+                <ImageUpload
+                  label="Foto do campeonato"
+                  folder="tournaments"
+                  shape="wide"
+                  value={draft.imageUrl}
+                  onChange={(url) => setDraft({ ...draft, imageUrl: url })}
+                />
+
+                <div className="grid gap-3 sm:grid-cols-[1fr_180px]">
                   <label className="flex flex-col gap-1 text-xs">
                     Nome do torneio
                     <input
@@ -312,12 +332,12 @@ export default function AdminTournamentsPage() {
                   onToggle={(id) => setDraft({ ...draft, playerIds: toggle(draft.playerIds, id) })}
                 />
 
-                <div className="flex justify-end gap-2 border-t border-[#454545] pt-3">
+                <div className="flex justify-end gap-2 border-t border-white/5 pt-3">
                   {draft.id && (
                     <button
                       onClick={removeTournament}
                       disabled={busy}
-                      className="border border-red-800 text-red-300 rounded-lg px-4 py-2 text-sm hover:bg-red-950 disabled:opacity-60"
+                      className="rounded-md border border-loss/40 px-4 py-2 text-sm text-loss hover:bg-loss/10 disabled:opacity-60"
                     >
                       Remover
                     </button>
@@ -325,7 +345,7 @@ export default function AdminTournamentsPage() {
                   <button
                     onClick={saveTournament}
                     disabled={busy}
-                    className="bg-yellow-500 hover:bg-yellow-600 text-yellow-900 font-bold rounded-lg px-5 py-2 text-sm disabled:opacity-60"
+                    className="rounded-md bg-gold px-5 py-2 text-sm font-bold text-[#1a1a1e] hover:opacity-90 disabled:opacity-60"
                   >
                     {busy ? "Salvando…" : "Salvar torneio"}
                   </button>
@@ -333,25 +353,25 @@ export default function AdminTournamentsPage() {
               </div>
 
               {!draft.id ? (
-                <div className="bg-[#2f2f2f] border border-[#454545] rounded-xl p-4 text-xs text-[#a9a9a9]">
+                <div className="rounded-lg bg-card p-4 text-xs text-faint">
                   Salve o torneio para adicionar súmulas e mensagens.
                 </div>
               ) : (
                 <>
                   {/* ARTILHARIA */}
-                  <div className="bg-[#2f2f2f] border border-[#454545] rounded-xl p-4">
-                    <h3 className="font-bold text-sm mb-2">Artilharia (automática pelas súmulas)</h3>
+                  <div className="rounded-lg bg-card p-4">
+                    <h3 className="mb-2 text-sm font-bold">Artilharia (automática pelas súmulas)</h3>
                     {scorers.length === 0 ? (
-                      <p className="text-xs text-[#8d8d8d]">Sem gols registrados ainda.</p>
+                      <p className="text-xs text-faint">Sem gols registrados ainda.</p>
                     ) : (
-                      <ol className="text-sm flex flex-col gap-1">
+                      <ol className="flex flex-col gap-1 text-sm">
                         {scorers.map((s, i) => (
                           <li key={s.playerId} className="flex justify-between">
                             <span>
-                              <span className="text-[#8d8d8d] mr-2">{i + 1}</span>
+                              <span className="mr-2 text-faint">{i + 1}</span>
                               {playerName(s.playerId)}
                             </span>
-                            <span className="text-yellow-500 font-bold">{s.goals}</span>
+                            <span className="font-bold text-gold">{s.goals}</span>
                           </li>
                         ))}
                       </ol>
@@ -359,44 +379,44 @@ export default function AdminTournamentsPage() {
                   </div>
 
                   {/* SÚMULAS */}
-                  <div className="bg-[#2f2f2f] border border-[#454545] rounded-xl p-4">
-                    <h3 className="font-bold text-sm mb-3">Súmulas ({matches.length})</h3>
+                  <div className="rounded-lg bg-card p-4">
+                    <h3 className="mb-3 text-sm font-bold">Súmulas ({matches.length})</h3>
 
-                    <ul className="flex flex-col gap-2 mb-4">
+                    <ul className="mb-4 flex flex-col gap-2">
                       {matches.map((m) => (
                         <li
                           key={m.id}
-                          className="flex items-center justify-between bg-[#1d1d1d] rounded-lg px-3 py-2 text-sm"
+                          className="flex items-center justify-between rounded-md bg-panel px-3 py-2 text-sm"
                         >
                           <div>
                             <span className="font-medium">
                               {teamName(m.homeTeamId)} {m.homeScore} × {m.awayScore}{" "}
                               {teamName(m.awayTeamId)}
                             </span>
-                            <span className="text-[#8d8d8d] text-xs ml-2">{m.playedAt ?? ""}</span>
+                            <span className="ml-2 text-xs text-faint">{m.playedAt ?? ""}</span>
                             {m.goals.length > 0 && (
-                              <div className="text-[10px] text-[#8d8d8d]">
+                              <div className="text-[10px] text-faint">
                                 ⚽ {m.goals.map((g) => `${playerName(g.playerId)} (${g.goals})`).join(", ")}
                               </div>
                             )}
                           </div>
                           <button
                             onClick={() => removeMatch(m.id)}
-                            className="text-red-400 text-xs hover:underline"
+                            className="text-xs text-loss hover:underline"
                           >
                             remover
                           </button>
                         </li>
                       ))}
                       {matches.length === 0 && (
-                        <li className="text-xs text-[#8d8d8d]">Nenhuma súmula ainda.</li>
+                        <li className="text-xs text-faint">Nenhuma súmula ainda.</li>
                       )}
                     </ul>
 
                     {/* nova súmula */}
-                    <div className="border-t border-[#454545] pt-3 flex flex-col gap-2">
-                      <div className="grid grid-cols-2 sm:grid-cols-5 gap-2 items-end">
-                        <label className="flex flex-col gap-1 text-[11px] col-span-2 sm:col-span-1">
+                    <div className="flex flex-col gap-2 border-t border-white/5 pt-3">
+                      <div className="grid grid-cols-2 items-end gap-2 sm:grid-cols-5">
+                        <label className="col-span-2 flex flex-col gap-1 text-[11px] sm:col-span-1">
                           Mandante
                           <select
                             className={inputC}
@@ -437,7 +457,7 @@ export default function AdminTournamentsPage() {
                             }
                           />
                         </label>
-                        <label className="flex flex-col gap-1 text-[11px] col-span-2 sm:col-span-1">
+                        <label className="col-span-2 flex flex-col gap-1 text-[11px] sm:col-span-1">
                           Visitante
                           <select
                             className={inputC}
@@ -468,7 +488,7 @@ export default function AdminTournamentsPage() {
                       </div>
 
                       {/* gols por jogador */}
-                      <div className="flex flex-wrap items-end gap-2 bg-[#1d1d1d] rounded-lg p-2">
+                      <div className="flex flex-wrap items-end gap-2 rounded-md bg-panel p-2">
                         <label className="flex flex-col gap-1 text-[11px]">
                           Goleador
                           <select
@@ -484,7 +504,7 @@ export default function AdminTournamentsPage() {
                             ))}
                           </select>
                         </label>
-                        <label className="flex flex-col gap-1 text-[11px] w-16">
+                        <label className="flex w-16 flex-col gap-1 text-[11px]">
                           Gols
                           <input
                             type="number"
@@ -496,14 +516,14 @@ export default function AdminTournamentsPage() {
                         </label>
                         <button
                           onClick={addGoal}
-                          className="border border-[#454545] rounded-lg px-3 py-2 text-xs hover:bg-[#2f2f2f]"
+                          className="rounded-md bg-base px-3 py-2 text-xs hover:bg-base/70"
                         >
                           + gol
                         </button>
                         {newMatch.goals.map((g, i) => (
                           <span
                             key={i}
-                            className="bg-yellow-500 text-yellow-900 rounded-full px-2 py-0.5 text-[11px]"
+                            className="rounded-md bg-gold px-2 py-0.5 text-[11px] text-[#1a1a1e]"
                           >
                             {playerName(g.playerId)} ({g.goals})
                           </span>
@@ -513,7 +533,7 @@ export default function AdminTournamentsPage() {
                       <button
                         onClick={addMatch}
                         disabled={busy}
-                        className="self-start bg-yellow-500 hover:bg-yellow-600 text-yellow-900 font-bold rounded-lg px-4 py-2 text-sm disabled:opacity-60"
+                        className="self-start rounded-md bg-gold px-4 py-2 text-sm font-bold text-[#1a1a1e] hover:opacity-90 disabled:opacity-60"
                       >
                         Adicionar súmula
                       </button>
@@ -521,25 +541,25 @@ export default function AdminTournamentsPage() {
                   </div>
 
                   {/* MENSAGENS */}
-                  <div className="bg-[#2f2f2f] border border-[#454545] rounded-xl p-4">
-                    <h3 className="font-bold text-sm mb-3">Mensagens ({messages.length})</h3>
-                    <ul className="flex flex-col gap-2 mb-3">
+                  <div className="rounded-lg bg-card p-4">
+                    <h3 className="mb-3 text-sm font-bold">Mensagens ({messages.length})</h3>
+                    <ul className="mb-3 flex flex-col gap-2">
                       {messages.map((m) => (
                         <li
                           key={m.id}
-                          className="flex items-start justify-between bg-[#1d1d1d] rounded-lg px-3 py-2 text-sm"
+                          className="flex items-start justify-between rounded-md bg-panel px-3 py-2 text-sm"
                         >
                           <span className="whitespace-pre-wrap">{m.body}</span>
                           <button
                             onClick={() => removeMessage(m.id)}
-                            className="text-red-400 text-xs hover:underline ml-3 shrink-0"
+                            className="ml-3 shrink-0 text-xs text-loss hover:underline"
                           >
                             remover
                           </button>
                         </li>
                       ))}
                       {messages.length === 0 && (
-                        <li className="text-xs text-[#8d8d8d]">Nenhuma mensagem ainda.</li>
+                        <li className="text-xs text-faint">Nenhuma mensagem ainda.</li>
                       )}
                     </ul>
                     <div className="flex gap-2">
@@ -547,12 +567,12 @@ export default function AdminTournamentsPage() {
                         value={newMessage}
                         onChange={(e) => setNewMessage(e.target.value)}
                         placeholder="Escreva um aviso/mensagem do campeonato..."
-                        className={`${inputC} flex-1 min-h-[44px]`}
+                        className={`${inputC} min-h-[44px] flex-1`}
                       />
                       <button
                         onClick={addMessage}
                         disabled={busy}
-                        className="bg-yellow-500 hover:bg-yellow-600 text-yellow-900 font-bold rounded-lg px-4 py-2 text-sm disabled:opacity-60 self-stretch"
+                        className="self-stretch rounded-md bg-gold px-4 py-2 text-sm font-bold text-[#1a1a1e] hover:opacity-90 disabled:opacity-60"
                       >
                         Enviar
                       </button>
@@ -585,16 +605,16 @@ function Multi({
   const filtered = options.filter((o) => o.name.toLowerCase().includes(q.toLowerCase().trim()));
   return (
     <div>
-      <div className="text-xs font-bold mb-1">
+      <div className="mb-1 text-xs font-bold">
         {label} ({selected.length})
       </div>
       {selected.length > 0 && (
-        <div className="flex flex-wrap gap-1.5 mb-2">
+        <div className="mb-2 flex flex-wrap gap-1.5">
           {selected.map((id) => (
             <button
               key={id}
               onClick={() => onToggle(id)}
-              className="bg-yellow-500 text-yellow-900 rounded-full px-2 py-0.5 text-xs"
+              className="rounded-md bg-gold px-2 py-0.5 text-xs text-[#1a1a1e]"
             >
               {nameById.get(id) ?? id} ✕
             </button>
@@ -605,17 +625,17 @@ function Multi({
         value={q}
         onChange={(e) => setQ(e.target.value)}
         placeholder="Buscar para adicionar..."
-        className="text-xs border border-[#8d8d8d68] bg-[#1d1d1d] p-2 rounded w-full mb-1"
+        className="mb-1 w-full rounded-md bg-panel p-2 text-xs text-white focus:outline-none focus:ring-1 focus:ring-gold/50"
       />
-      <ul className="flex flex-col gap-0.5 max-h-[160px] overflow-y-auto text-sm border border-[#454545] rounded-lg p-1">
+      <ul className="flex max-h-[160px] flex-col gap-0.5 overflow-y-auto rounded-md bg-panel p-1 text-sm">
         {filtered.slice(0, 50).map((o) => {
           const sel = selected.includes(o.id);
           return (
             <li key={o.id}>
               <button
                 onClick={() => onToggle(o.id)}
-                className={`w-full text-left rounded px-2 py-1 hover:bg-[#1d1d1d] flex justify-between ${
-                  sel ? "text-yellow-500" : ""
+                className={`flex w-full justify-between rounded px-2 py-1 text-left hover:bg-base ${
+                  sel ? "text-gold" : ""
                 }`}
               >
                 {o.name}
