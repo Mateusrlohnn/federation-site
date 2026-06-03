@@ -71,9 +71,17 @@ export default function TournamentsView({
                       </span>
                     )
                   )}
-                  <h3 className="absolute bottom-2 left-3 right-3 truncate text-lg font-extrabold tracking-tight text-shadow-lg">
-                    {t.name}
-                  </h3>
+                  <div className="absolute bottom-2 left-3 right-3 flex items-center gap-2">
+                    {t.logo && (
+                      <span className="flex h-9 w-9 shrink-0 items-center justify-center overflow-hidden rounded-lg bg-panel/80 ring-1 ring-white/15">
+                        {/* eslint-disable-next-line @next/next/no-img-element */}
+                        <img src={t.logo} alt="" className="h-full w-full object-cover" />
+                      </span>
+                    )}
+                    <h3 className="truncate text-lg font-extrabold tracking-tight text-shadow-lg">
+                      {t.name}
+                    </h3>
+                  </div>
                 </div>
 
                 {/* Rodapé com métricas rápidas */}

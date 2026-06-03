@@ -10,6 +10,7 @@ export type TournamentView = {
   name: string;
   status: string;
   banner: string;
+  logo: string;
   championTeamId: string | null;
   championName: string | null;
   teams: TourTeam[];

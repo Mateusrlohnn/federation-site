@@ -18,7 +18,7 @@ async function getData(): Promise<{
       supabase
         .from("tournaments")
         .select(
-          "*, tournament_teams(team_id), matches(*, match_goals(player_id, goals)), tournament_messages(body)",
+          "*, tournament_teams(team_id), matches(*, match_events(player_id, team_id, type, minute)), tournament_messages(body)",
         )
         .order("created_at", { ascending: false }),
       supabase.from("players").select("id, name"),
@@ -53,6 +53,7 @@ async function getData(): Promise<{
         name: String(r.name),
         status: String(r.status),
         banner: (r.image_url as string) ?? "",
+        logo: (r.logo_url as string) ?? "",
         championTeamId,
         championName: championTeamId ? teamNames[championTeamId] ?? null : null,
         teams,

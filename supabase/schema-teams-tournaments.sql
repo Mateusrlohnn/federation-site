@@ -34,6 +34,7 @@ create table if not exists public.tournaments (
   status           text not null default 'Em andamento', -- Em andamento | Finalizado | Em breve
   champion_team_id uuid references public.teams(id) on delete set null,   -- time campeão (opcional)
   organizer_id     uuid references public.players(id) on delete set null, -- organizador (opcional)
+  logo_url         text,  -- foto/escudo do torneio (quadrada); image_url é o banner (larga)
   created_at       timestamptz not null default now(),
   updated_at       timestamptz not null default now()
 );
@@ -61,6 +62,7 @@ create table if not exists public.matches (
   home_score    int  not null default 0,
   away_score    int  not null default 0,
   is_live       boolean not null default false, -- partida ao vivo (placar manual)
+  mvp_player_id uuid references public.players(id) on delete set null, -- MVP (após o fim)
   played_at     date,
   notes         text,
   created_at    timestamptz not null default now()
@@ -82,6 +84,21 @@ create table if not exists public.match_assists (
   match_id  uuid not null references public.matches(id)   on delete cascade,
   player_id uuid not null references public.players(id)   on delete cascade,
   assists   int  not null default 1
+);
+
+-- Eventos da partida (gols, pênaltis, assistências, cartões) — fonte única
+-- usada pela ficha da partida. type: goal | penalty_goal | penalty_miss |
+-- assist | yellow_card | red_card.
+create table if not exists public.match_events (
+  id        uuid primary key default gen_random_uuid(),
+  match_id  uuid not null references public.matches(id)  on delete cascade,
+  player_id uuid not null references public.players(id)  on delete cascade,
+  team_id   uuid references public.teams(id) on delete set null,
+  type      text not null check (
+    type in ('goal', 'penalty_goal', 'penalty_miss', 'assist', 'yellow_card', 'red_card')
+  ),
+  minute    int,
+  created_at timestamptz not null default now()
 );
 
 -- Mensagens / avisos do campeonato
@@ -111,7 +128,7 @@ declare t text;
 begin
   foreach t in array array[
     'teams','team_players','tournaments','tournament_teams',
-    'tournament_players','matches','match_goals','match_assists','tournament_messages'
+    'tournament_players','matches','match_goals','match_assists','match_events','tournament_messages'
   ] loop
     execute format('alter table public.%I enable row level security;', t);
     execute format('drop policy if exists "%s_read" on public.%I;', t, t);

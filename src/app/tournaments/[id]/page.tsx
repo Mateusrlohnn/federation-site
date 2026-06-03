@@ -11,16 +11,17 @@ async function getData(id: string): Promise<ScreenData | null> {
   if (!supabaseConfigured) return null;
   try {
     const supabase = publicClient();
-    const [tour, pl, te] = await Promise.all([
+    const [tour, pl, te, tp] = await Promise.all([
       supabase
         .from("tournaments")
         .select(
-          "*, tournament_teams(team_id), matches(*, match_goals(player_id, goals, minute), match_assists(player_id, assists)), tournament_messages(body)",
+          "*, tournament_teams(team_id), matches(*, match_events(player_id, team_id, type, minute)), tournament_messages(body)",
         )
         .eq("id", id)
         .single(),
       supabase.from("players").select("id, name, position"),
       supabase.from("teams").select("id, name, logo_url"),
+      supabase.from("team_players").select("team_id, player_id, position, active"),
     ]);
 
     if (tour.error || !tour.data) return null;
@@ -40,6 +41,19 @@ async function getData(id: string): Promise<ScreenData | null> {
       teamLogos[x.id] = x.logo_url ?? "";
     });
 
+    // elencos por time (com posição/status) — usados na súmula completa
+    const teamRosters: ScreenData["teamRosters"] = {};
+    (
+      (tp.data as { team_id: string; player_id: string; position: unknown; active: unknown }[]) ??
+      []
+    ).forEach((x) => {
+      (teamRosters[x.team_id] ??= []).push({
+        playerId: x.player_id,
+        position: asPosition(x.position),
+        active: x.active !== false,
+      });
+    });
+
     const teamIds = ((r.tournament_teams as { team_id: string }[] | undefined) ?? []).map(
       (x) => x.team_id,
     );
@@ -55,6 +69,7 @@ async function getData(id: string): Promise<ScreenData | null> {
       name: String(r.name),
       status: String(r.status),
       banner: (r.image_url as string) ?? "",
+      logo: (r.logo_url as string) ?? "",
       championTeamId,
       championName: championTeamId ? teamNames[championTeamId] ?? null : null,
       organizerName: r.organizer_id ? playerNames[r.organizer_id as string] ?? null : null,
@@ -65,6 +80,7 @@ async function getData(id: string): Promise<ScreenData | null> {
       playerPositions,
       teamNames,
       teamLogos,
+      teamRosters,
     };
   } catch {
     return null;

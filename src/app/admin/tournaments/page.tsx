@@ -5,33 +5,39 @@ import { createClient } from "@/lib/supabase/client";
 import ImageUpload from "@/components/ui/ImageUpload";
 import {
   TOURNAMENT_STATUSES,
+  MATCH_EVENT_TYPES,
   emptyTournament,
   emptyMatch,
   tournamentFromRow,
   matchFromRow,
   computeTopScorers,
+  teamGoals,
   type Tournament,
   type Match,
+  type MatchEventType,
   type TournamentMessage,
 } from "@/lib/tournaments";
 
 type Lite = { id: string; name: string };
+
+const eventEmoji = (t: MatchEventType) => MATCH_EVENT_TYPES.find((x) => x.type === t)?.emoji ?? "";
 
 export default function AdminTournamentsPage() {
   const supabase = createClient();
   const [list, setList] = useState<Tournament[]>([]);
   const [allTeams, setAllTeams] = useState<Lite[]>([]);
   const [allPlayers, setAllPlayers] = useState<Lite[]>([]);
+  const [rosters, setRosters] = useState<Record<string, string[]>>({}); // teamId -> playerIds
   const [draft, setDraft] = useState<Tournament | null>(null);
   const [matches, setMatches] = useState<Match[]>([]);
   const [messages, setMessages] = useState<TournamentMessage[]>([]);
   const [newMatch, setNewMatch] = useState<Match>(emptyMatch());
   const [editingMatchId, setEditingMatchId] = useState<string | null>(null);
-  const [goalPlayer, setGoalPlayer] = useState("");
-  const [goalCount, setGoalCount] = useState(1);
-  const [goalMinute, setGoalMinute] = useState("");
-  const [assistPlayer, setAssistPlayer] = useState("");
-  const [assistCount, setAssistCount] = useState(1);
+  const [editorOpen, setEditorOpen] = useState(false);
+  const [liveMode, setLiveMode] = useState(false); // editor de partida ao vivo
+  const [evPlayer, setEvPlayer] = useState("");
+  const [evType, setEvType] = useState<MatchEventType>("goal");
+  const [evMinute, setEvMinute] = useState("");
   const [newMessage, setNewMessage] = useState("");
   const [busy, setBusy] = useState(false);
   const [msg, setMsg] = useState("");
@@ -47,17 +53,25 @@ export default function AdminTournamentsPage() {
   }, [allPlayers]);
 
   const loadLists = useCallback(async () => {
-    const [t, te, pl] = await Promise.all([
+    const [t, te, pl, tp] = await Promise.all([
       supabase
         .from("tournaments")
         .select("*, tournament_teams(team_id), tournament_players(player_id)")
         .order("created_at", { ascending: false }),
       supabase.from("teams").select("id, name").order("name"),
       supabase.from("players").select("id, name").order("name"),
+      supabase.from("team_players").select("team_id, player_id"),
     ]);
     if (!t.error && t.data) setList(t.data.map(tournamentFromRow));
     if (!te.error && te.data) setAllTeams(te.data as Lite[]);
     if (!pl.error && pl.data) setAllPlayers(pl.data as Lite[]);
+    if (!tp.error && tp.data) {
+      const map: Record<string, string[]> = {};
+      (tp.data as { team_id: string; player_id: string }[]).forEach((r) => {
+        (map[r.team_id] ??= []).push(r.player_id);
+      });
+      setRosters(map);
+    }
   }, [supabase]);
 
   const loadSub = useCallback(
@@ -65,7 +79,7 @@ export default function AdminTournamentsPage() {
       const [m, ms] = await Promise.all([
         supabase
           .from("matches")
-          .select("*, match_goals(player_id, goals, minute), match_assists(player_id, assists)")
+          .select("*, match_events(player_id, team_id, type, minute)")
           .eq("tournament_id", tid)
           .order("played_at", { ascending: false, nullsFirst: false }),
         supabase
@@ -106,11 +120,25 @@ export default function AdminTournamentsPage() {
   function resetMatchForm() {
     setNewMatch(emptyMatch());
     setEditingMatchId(null);
-    setGoalPlayer("");
-    setGoalCount(1);
-    setGoalMinute("");
-    setAssistPlayer("");
-    setAssistCount(1);
+    setEditorOpen(false);
+    setLiveMode(false);
+    setEvPlayer("");
+    setEvType("goal");
+    setEvMinute("");
+  }
+
+  function startSumula() {
+    resetMatchForm();
+    setNewMatch(emptyMatch());
+    setLiveMode(false);
+    setEditorOpen(true);
+  }
+
+  function startLive() {
+    resetMatchForm();
+    setNewMatch({ ...emptyMatch(), isLive: true });
+    setLiveMode(true);
+    setEditorOpen(true);
   }
 
   function toggle(list: string[], id: string) {
@@ -133,6 +161,7 @@ export default function AdminTournamentsPage() {
       name: draft.name.trim(),
       status: draft.status,
       image_url: draft.imageUrl?.trim() || null,
+      logo_url: draft.logoUrl?.trim() || null,
       champion_team_id: champion,
       organizer_id: draft.organizerId || null,
     };
@@ -173,59 +202,66 @@ export default function AdminTournamentsPage() {
     await loadLists();
   }
 
-  function addGoal() {
-    if (!goalPlayer || goalCount < 1) return;
-    const minute = goalMinute.trim() === "" ? null : Number(goalMinute) || 0;
+  // jogadores elegíveis = elenco dos 2 times selecionados (com o time de origem)
+  function eligiblePlayers(): { id: string; name: string; teamId: string }[] {
+    const out: { id: string; name: string; teamId: string }[] = [];
+    const seen = new Set<string>();
+    for (const teamId of [newMatch.homeTeamId, newMatch.awayTeamId]) {
+      if (!teamId) continue;
+      for (const pid of rosters[teamId] ?? []) {
+        if (seen.has(pid)) continue;
+        seen.add(pid);
+        out.push({ id: pid, name: playerName(pid), teamId });
+      }
+    }
+    return out.sort((a, b) => a.name.localeCompare(b.name));
+  }
+
+  function addEvent() {
+    if (!evPlayer) return;
+    const teamId = eligiblePlayers().find((p) => p.id === evPlayer)?.teamId ?? null;
+    const minute = evMinute.trim() === "" ? null : Number(evMinute) || 0;
     setNewMatch((m) => ({
       ...m,
-      goals: [...m.goals, { playerId: goalPlayer, goals: goalCount, minute }],
+      events: [...m.events, { playerId: evPlayer, teamId, type: evType, minute }],
     }));
-    setGoalPlayer("");
-    setGoalCount(1);
-    setGoalMinute("");
+    setEvPlayer("");
+    setEvMinute("");
   }
 
-  function removeGoal(i: number) {
-    setNewMatch((m) => ({ ...m, goals: m.goals.filter((_, idx) => idx !== i) }));
-  }
-
-  function addAssist() {
-    if (!assistPlayer || assistCount < 1) return;
-    setNewMatch((m) => ({
-      ...m,
-      assists: [...m.assists, { playerId: assistPlayer, assists: assistCount }],
-    }));
-    setAssistPlayer("");
-    setAssistCount(1);
-  }
-
-  function removeAssist(i: number) {
-    setNewMatch((m) => ({ ...m, assists: m.assists.filter((_, idx) => idx !== i) }));
+  function removeEvent(i: number) {
+    setNewMatch((m) => ({ ...m, events: m.events.filter((_, idx) => idx !== i) }));
   }
 
   function editMatch(m: Match) {
     setEditingMatchId(m.id ?? null);
     setNewMatch({ ...m });
-    setGoalPlayer("");
-    setGoalCount(1);
-    setGoalMinute("");
-    setAssistPlayer("");
-    setAssistCount(1);
+    setLiveMode(m.isLive);
+    setEditorOpen(true);
+    setEvPlayer("");
+    setEvType("goal");
+    setEvMinute("");
     setErr("");
     setMsg("");
   }
 
-  async function saveMatch() {
+  // endLive: força o fim da partida (vira súmula) e mantém o editor aberto p/ MVP
+  async function saveMatch(opts?: { endLive?: boolean }) {
     if (!draft?.id) return;
     setBusy(true);
     setErr("");
+    const isLive = opts?.endLive ? false : newMatch.isLive;
+    // MVP só vale para partida encerrada (não ao vivo)
+    const mvp = isLive ? null : newMatch.mvpPlayerId;
     const row = {
       tournament_id: draft.id,
       home_team_id: newMatch.homeTeamId,
       away_team_id: newMatch.awayTeamId,
-      home_score: newMatch.homeScore,
-      away_score: newMatch.awayScore,
-      is_live: newMatch.isLive,
+      // placar automático: derivado dos gols (gol normal + pênalti convertido)
+      home_score: teamGoals(newMatch.events, newMatch.homeTeamId),
+      away_score: teamGoals(newMatch.events, newMatch.awayTeamId),
+      is_live: isLive,
+      mvp_player_id: mvp,
       played_at: newMatch.playedAt || null,
       notes: newMatch.notes || null,
     };
@@ -240,35 +276,42 @@ export default function AdminTournamentsPage() {
       matchId = data.id as string;
     }
 
-    // sincroniza gols e assistências (apaga e regrava)
-    await supabase.from("match_goals").delete().eq("match_id", matchId);
-    if (newMatch.goals.length) {
-      const { error: ge } = await supabase.from("match_goals").insert(
-        newMatch.goals.map((g) => ({
+    // sincroniza eventos (apaga e regrava)
+    await supabase.from("match_events").delete().eq("match_id", matchId);
+    if (newMatch.events.length) {
+      const { error: ee } = await supabase.from("match_events").insert(
+        newMatch.events.map((e) => ({
           match_id: matchId,
-          player_id: g.playerId,
-          goals: g.goals,
-          minute: g.minute,
+          player_id: e.playerId,
+          team_id: e.teamId,
+          type: e.type,
+          minute: e.minute,
         })),
       );
-      if (ge) return finish(ge.message);
-    }
-    await supabase.from("match_assists").delete().eq("match_id", matchId);
-    if (newMatch.assists.length) {
-      const { error: ae } = await supabase.from("match_assists").insert(
-        newMatch.assists.map((a) => ({
-          match_id: matchId,
-          player_id: a.playerId,
-          assists: a.assists,
-        })),
-      );
-      if (ae) return finish(ae.message);
+      if (ee) return finish(ee.message);
     }
 
     setBusy(false);
-    setMsg(editingMatchId ? "Súmula atualizada." : "Súmula adicionada.");
-    resetMatchForm();
     await loadSub(draft.id);
+
+    if (opts?.endLive) {
+      // partida encerrada vira súmula: continua editável para definir o MVP
+      setMsg("Partida encerrada! Súmula criada — defina o MVP, se quiser.");
+      setNewMatch((m) => ({ ...m, isLive: false }));
+      setEditingMatchId(matchId);
+      setLiveMode(false);
+      setEditorOpen(true);
+    } else {
+      setMsg(editingMatchId ? "Súmula atualizada." : isLive ? "Partida ao vivo salva." : "Súmula adicionada.");
+      if (isLive) {
+        // mantém o editor da partida ao vivo aberto para continuar atualizando
+        setEditingMatchId(matchId);
+        setEditorOpen(true);
+        setLiveMode(true);
+      } else {
+        resetMatchForm();
+      }
+    }
   }
 
   async function removeMatch(id?: string) {
@@ -301,9 +344,259 @@ export default function AdminTournamentsPage() {
 
   const scorers = computeTopScorers(matches);
   const matchTeams = draft && draft.teamIds.length ? allTeams.filter((t) => draft.teamIds.includes(t.id)) : allTeams;
+  const sumulas = matches.filter((m) => !m.isLive);
+  const liveMatches = matches.filter((m) => m.isLive);
+  // placar automático do rascunho (derivado dos gols)
+  const draftScoreA = teamGoals(newMatch.events, newMatch.homeTeamId);
+  const draftScoreB = teamGoals(newMatch.events, newMatch.awayTeamId);
 
   const inputC =
     "rounded-md bg-panel p-2 text-sm text-white focus:outline-none focus:ring-1 focus:ring-gold/50";
+
+  function renderMatchRow(m: Match) {
+    return (
+      <li
+        key={m.id}
+        className={`flex items-center justify-between rounded-md bg-panel px-3 py-2 text-sm ${
+          editingMatchId === m.id ? "ring-1 ring-gold" : ""
+        }`}
+      >
+        <div className="min-w-0">
+          <span className="font-medium">
+            {teamName(m.homeTeamId)} {m.homeScore} × {m.awayScore} {teamName(m.awayTeamId)}
+          </span>
+          {m.isLive && (
+            <span className="ml-2 rounded bg-loss px-1.5 py-0.5 text-[10px] font-bold text-white">
+              AO VIVO
+            </span>
+          )}
+          <span className="ml-2 text-xs text-faint">{m.playedAt ?? ""}</span>
+          {m.events.length > 0 && (
+            <div className="text-[10px] text-faint">
+              {m.events
+                .map(
+                  (e) =>
+                    `${eventEmoji(e.type)} ${playerName(e.playerId)}${
+                      e.minute != null ? ` ${e.minute}'` : ""
+                    }`,
+                )
+                .join("  ·  ")}
+            </div>
+          )}
+          {m.mvpPlayerId && (
+            <div className="text-[10px] font-semibold text-gold">
+              ⭐ MVP: {playerName(m.mvpPlayerId)}
+            </div>
+          )}
+        </div>
+        <div className="flex shrink-0 gap-2">
+          <button onClick={() => editMatch(m)} className="text-xs text-gold hover:underline">
+            editar
+          </button>
+          <button onClick={() => removeMatch(m.id)} className="text-xs text-loss hover:underline">
+            remover
+          </button>
+        </div>
+      </li>
+    );
+  }
+
+  function renderEditor() {
+    const bothTeams = !!newMatch.homeTeamId && !!newMatch.awayTeamId;
+    return (
+      <div className="mt-3 flex flex-col gap-2 border-t border-white/5 pt-3">
+        <div className="grid grid-cols-2 items-end gap-2 sm:grid-cols-5">
+          <label className="col-span-2 flex flex-col gap-1 text-[11px] sm:col-span-1">
+            Time A
+            <select
+              className={inputC}
+              value={newMatch.homeTeamId ?? ""}
+              onChange={(e) => setNewMatch({ ...newMatch, homeTeamId: e.target.value || null })}
+            >
+              <option value="">—</option>
+              {matchTeams.map((t) => (
+                <option key={t.id} value={t.id}>
+                  {t.name}
+                </option>
+              ))}
+            </select>
+          </label>
+          <div className="flex flex-col gap-1 text-[11px]">
+            <span>Placar (automático)</span>
+            <div className="flex h-[38px] items-center justify-center gap-2 rounded-md bg-base text-lg font-extrabold tabular-nums">
+              <span>{draftScoreA}</span>
+              <span className="text-sm text-faint">×</span>
+              <span>{draftScoreB}</span>
+            </div>
+          </div>
+          <label className="col-span-2 flex flex-col gap-1 text-[11px] sm:col-span-1">
+            Time B
+            <select
+              className={inputC}
+              value={newMatch.awayTeamId ?? ""}
+              onChange={(e) => setNewMatch({ ...newMatch, awayTeamId: e.target.value || null })}
+            >
+              <option value="">—</option>
+              {matchTeams.map((t) => (
+                <option key={t.id} value={t.id}>
+                  {t.name}
+                </option>
+              ))}
+            </select>
+          </label>
+          <label className="flex flex-col gap-1 text-[11px]">
+            Data
+            <input
+              type="date"
+              className={inputC}
+              value={newMatch.playedAt ?? ""}
+              onChange={(e) => setNewMatch({ ...newMatch, playedAt: e.target.value || null })}
+            />
+          </label>
+        </div>
+
+        {/* eventos (gols, pênaltis, assistências, cartões) */}
+        <div className="flex flex-col gap-2 rounded-md bg-panel p-2">
+          {!bothTeams ? (
+            <span className="text-[11px] text-faint">
+              Selecione os dois times para registrar os eventos dos jogadores.
+            </span>
+          ) : (
+            <>
+              <div className="flex flex-wrap items-end gap-2">
+                <label className="flex flex-col gap-1 text-[11px]">
+                  Jogador
+                  <select
+                    className={inputC}
+                    value={evPlayer}
+                    onChange={(e) => setEvPlayer(e.target.value)}
+                  >
+                    <option value="">Selecione…</option>
+                    {[newMatch.homeTeamId, newMatch.awayTeamId].map((tid) => (
+                      <optgroup key={tid} label={teamName(tid)}>
+                        {eligiblePlayers()
+                          .filter((p) => p.teamId === tid)
+                          .map((p) => (
+                            <option key={p.id} value={p.id}>
+                              {p.name}
+                            </option>
+                          ))}
+                      </optgroup>
+                    ))}
+                  </select>
+                </label>
+                <label className="flex flex-col gap-1 text-[11px]">
+                  Evento
+                  <select
+                    className={inputC}
+                    value={evType}
+                    onChange={(e) => setEvType(e.target.value as MatchEventType)}
+                  >
+                    {MATCH_EVENT_TYPES.map((t) => (
+                      <option key={t.type} value={t.type}>
+                        {t.emoji} {t.label}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+                <label className="flex w-16 flex-col gap-1 text-[11px]">
+                  Minuto
+                  <input
+                    type="number"
+                    min={0}
+                    placeholder="ex: 4"
+                    className={inputC}
+                    value={evMinute}
+                    onChange={(e) => setEvMinute(e.target.value)}
+                  />
+                </label>
+                <button
+                  onClick={addEvent}
+                  className="rounded-md bg-base px-3 py-2 text-xs hover:bg-base/70"
+                >
+                  + evento
+                </button>
+              </div>
+              {newMatch.events.length > 0 && (
+                <div className="flex flex-wrap gap-1.5">
+                  {newMatch.events.map((e, i) => (
+                    <button
+                      key={i}
+                      onClick={() => removeEvent(i)}
+                      title="Remover evento"
+                      className="rounded-md bg-base px-2 py-0.5 text-[11px]"
+                    >
+                      {eventEmoji(e.type)} {playerName(e.playerId)}
+                      {e.minute != null ? ` ${e.minute}'` : ""} ✕
+                    </button>
+                  ))}
+                </div>
+              )}
+            </>
+          )}
+        </div>
+
+        {/* MVP (só em súmula encerrada) */}
+        {liveMode ? (
+          <p className="text-[11px] text-faint">
+            ⭐ O MVP poderá ser definido após clicar em <b>Encerrar partida</b>.
+          </p>
+        ) : (
+          <label className="flex flex-col gap-1 text-[11px]">
+            <span className="font-semibold">⭐ MVP da partida</span>
+            <select
+              className={inputC}
+              value={newMatch.mvpPlayerId ?? ""}
+              onChange={(e) => setNewMatch({ ...newMatch, mvpPlayerId: e.target.value || null })}
+              disabled={!bothTeams}
+            >
+              <option value="">— Sem MVP —</option>
+              {eligiblePlayers().map((p) => (
+                <option key={p.id} value={p.id}>
+                  {p.name}
+                </option>
+              ))}
+            </select>
+          </label>
+        )}
+
+        {/* ações */}
+        <div className="flex flex-wrap items-center gap-2">
+          <button
+            onClick={() => saveMatch()}
+            disabled={busy}
+            className="rounded-md bg-gold px-4 py-2 text-sm font-bold text-[#1a1a1e] hover:opacity-90 disabled:opacity-60"
+          >
+            {busy
+              ? "Salvando…"
+              : liveMode
+                ? editingMatchId
+                  ? "Salvar ao vivo"
+                  : "Iniciar partida ao vivo"
+                : editingMatchId
+                  ? "Salvar alterações"
+                  : "Adicionar súmula"}
+          </button>
+          {liveMode && editingMatchId && (
+            <button
+              onClick={() => saveMatch({ endLive: true })}
+              disabled={busy}
+              className="rounded-md bg-loss px-4 py-2 text-sm font-bold text-white hover:opacity-90 disabled:opacity-60"
+            >
+              ⏹ Encerrar partida
+            </button>
+          )}
+          <button
+            onClick={resetMatchForm}
+            disabled={busy}
+            className="rounded-md border border-white/10 px-4 py-2 text-sm text-faint hover:bg-panel disabled:opacity-60"
+          >
+            {editingMatchId ? "Fechar" : "Cancelar"}
+          </button>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <>
@@ -362,13 +655,23 @@ export default function AdminTournamentsPage() {
             <>
               {/* BÁSICO + VÍNCULOS */}
               <div className="flex flex-col gap-4 rounded-lg bg-card p-4">
-                <ImageUpload
-                  label="Banner do campeonato (imagem larga)"
-                  folder="tournaments"
-                  shape="wide"
-                  value={draft.imageUrl}
-                  onChange={(url) => setDraft({ ...draft, imageUrl: url })}
-                />
+                <div className="flex flex-col gap-4 sm:flex-row sm:items-start">
+                  <ImageUpload
+                    label="Foto do torneio (quadrada)"
+                    folder="tournaments"
+                    value={draft.logoUrl}
+                    onChange={(url) => setDraft({ ...draft, logoUrl: url })}
+                  />
+                  <div className="flex-1">
+                    <ImageUpload
+                      label="Banner do campeonato (imagem larga)"
+                      folder="tournaments"
+                      shape="wide"
+                      value={draft.imageUrl}
+                      onChange={(url) => setDraft({ ...draft, imageUrl: url })}
+                    />
+                  </div>
+                </div>
 
                 <div className="grid gap-3 sm:grid-cols-[1fr_180px]">
                   <label className="flex flex-col gap-1 text-xs">
@@ -494,289 +797,53 @@ export default function AdminTournamentsPage() {
                     )}
                   </div>
 
-                  {/* SÚMULAS */}
+                  {/* SÚMULAS (partidas finalizadas) */}
                   <div className="rounded-lg bg-card p-4">
-                    <h3 className="mb-3 text-sm font-bold">Súmulas ({matches.length})</h3>
-
-                    <ul className="mb-4 flex flex-col gap-2">
-                      {matches.map((m) => (
-                        <li
-                          key={m.id}
-                          className={`flex items-center justify-between rounded-md bg-panel px-3 py-2 text-sm ${
-                            editingMatchId === m.id ? "ring-1 ring-gold" : ""
-                          }`}
-                        >
-                          <div>
-                            <span className="font-medium">
-                              {teamName(m.homeTeamId)} {m.homeScore} × {m.awayScore}{" "}
-                              {teamName(m.awayTeamId)}
-                            </span>
-                            {m.isLive && (
-                              <span className="ml-2 rounded bg-loss px-1.5 py-0.5 text-[10px] font-bold text-white">
-                                AO VIVO
-                              </span>
-                            )}
-                            <span className="ml-2 text-xs text-faint">{m.playedAt ?? ""}</span>
-                            {m.goals.length > 0 && (
-                              <div className="text-[10px] text-faint">
-                                ⚽{" "}
-                                {m.goals
-                                  .map(
-                                    (g) =>
-                                      `${playerName(g.playerId)}${
-                                        g.minute != null ? ` ${g.minute}'` : ""
-                                      } (${g.goals})`,
-                                  )
-                                  .join(", ")}
-                              </div>
-                            )}
-                            {m.assists.length > 0 && (
-                              <div className="text-[10px] text-faint">
-                                🅰{" "}
-                                {m.assists
-                                  .map((a) => `${playerName(a.playerId)} (${a.assists})`)
-                                  .join(", ")}
-                              </div>
-                            )}
-                          </div>
-                          <div className="flex shrink-0 gap-2">
-                            <button
-                              onClick={() => editMatch(m)}
-                              className="text-xs text-gold hover:underline"
-                            >
-                              editar
-                            </button>
-                            <button
-                              onClick={() => removeMatch(m.id)}
-                              className="text-xs text-loss hover:underline"
-                            >
-                              remover
-                            </button>
-                          </div>
-                        </li>
-                      ))}
-                      {matches.length === 0 && (
+                    <div className="mb-3 flex items-center justify-between gap-2">
+                      <h3 className="text-sm font-bold">Súmulas ({sumulas.length})</h3>
+                      <button
+                        onClick={startSumula}
+                        className="rounded-md bg-gold px-3 py-1.5 text-xs font-bold text-[#1a1a1e] hover:opacity-90"
+                      >
+                        + Nova súmula
+                      </button>
+                    </div>
+                    <ul className="flex flex-col gap-2">
+                      {sumulas.map((m) => renderMatchRow(m))}
+                      {sumulas.length === 0 && (
                         <li className="text-xs text-faint">Nenhuma súmula ainda.</li>
                       )}
                     </ul>
+                    {editorOpen && !liveMode && renderEditor()}
+                  </div>
 
-                    {/* nova súmula */}
-                    <div className="flex flex-col gap-2 border-t border-white/5 pt-3">
-                      <div className="grid grid-cols-2 items-end gap-2 sm:grid-cols-5">
-                        <label className="col-span-2 flex flex-col gap-1 text-[11px] sm:col-span-1">
-                          Mandante
-                          <select
-                            className={inputC}
-                            value={newMatch.homeTeamId ?? ""}
-                            onChange={(e) =>
-                              setNewMatch({ ...newMatch, homeTeamId: e.target.value || null })
-                            }
-                          >
-                            <option value="">—</option>
-                            {matchTeams.map((t) => (
-                              <option key={t.id} value={t.id}>
-                                {t.name}
-                              </option>
-                            ))}
-                          </select>
-                        </label>
-                        <label className="flex flex-col gap-1 text-[11px]">
-                          Gols M
-                          <input
-                            type="number"
-                            min={0}
-                            className={inputC}
-                            value={newMatch.homeScore}
-                            onChange={(e) =>
-                              setNewMatch({ ...newMatch, homeScore: Number(e.target.value) || 0 })
-                            }
-                          />
-                        </label>
-                        <label className="flex flex-col gap-1 text-[11px]">
-                          Gols V
-                          <input
-                            type="number"
-                            min={0}
-                            className={inputC}
-                            value={newMatch.awayScore}
-                            onChange={(e) =>
-                              setNewMatch({ ...newMatch, awayScore: Number(e.target.value) || 0 })
-                            }
-                          />
-                        </label>
-                        <label className="col-span-2 flex flex-col gap-1 text-[11px] sm:col-span-1">
-                          Visitante
-                          <select
-                            className={inputC}
-                            value={newMatch.awayTeamId ?? ""}
-                            onChange={(e) =>
-                              setNewMatch({ ...newMatch, awayTeamId: e.target.value || null })
-                            }
-                          >
-                            <option value="">—</option>
-                            {matchTeams.map((t) => (
-                              <option key={t.id} value={t.id}>
-                                {t.name}
-                              </option>
-                            ))}
-                          </select>
-                        </label>
-                        <label className="flex flex-col gap-1 text-[11px]">
-                          Data
-                          <input
-                            type="date"
-                            className={inputC}
-                            value={newMatch.playedAt ?? ""}
-                            onChange={(e) =>
-                              setNewMatch({ ...newMatch, playedAt: e.target.value || null })
-                            }
-                          />
-                        </label>
-                      </div>
-
-                      {/* ao vivo */}
-                      <label className="flex w-max items-center gap-2 rounded-md bg-panel px-3 py-2 text-xs font-semibold">
-                        <input
-                          type="checkbox"
-                          checked={newMatch.isLive}
-                          onChange={(e) => setNewMatch({ ...newMatch, isLive: e.target.checked })}
-                          className="h-4 w-4 accent-[#ff1744]"
-                        />
+                  {/* PARTIDA AO VIVO */}
+                  <div className="rounded-lg bg-card p-4">
+                    <div className="mb-3 flex items-center justify-between gap-2">
+                      <h3 className="flex items-center gap-2 text-sm font-bold">
                         <span className="flex items-center gap-1.5">
                           <span
                             className={`h-2 w-2 rounded-full ${
-                              newMatch.isLive ? "animate-pulse bg-loss" : "bg-faint"
+                              liveMatches.length ? "animate-pulse bg-loss" : "bg-faint"
                             }`}
                           />
-                          Partida ao vivo
+                          Partida ao vivo ({liveMatches.length})
                         </span>
-                      </label>
-
-                      {/* gols por jogador */}
-                      <div className="flex flex-wrap items-end gap-2 rounded-md bg-panel p-2">
-                        <label className="flex flex-col gap-1 text-[11px]">
-                          Goleador
-                          <select
-                            className={inputC}
-                            value={goalPlayer}
-                            onChange={(e) => setGoalPlayer(e.target.value)}
-                          >
-                            <option value="">Selecione…</option>
-                            {allPlayers.map((p) => (
-                              <option key={p.id} value={p.id}>
-                                {p.name}
-                              </option>
-                            ))}
-                          </select>
-                        </label>
-                        <label className="flex w-14 flex-col gap-1 text-[11px]">
-                          Gols
-                          <input
-                            type="number"
-                            min={1}
-                            className={inputC}
-                            value={goalCount}
-                            onChange={(e) => setGoalCount(Number(e.target.value) || 1)}
-                          />
-                        </label>
-                        <label className="flex w-16 flex-col gap-1 text-[11px]">
-                          Minuto
-                          <input
-                            type="number"
-                            min={0}
-                            placeholder="ex: 4"
-                            className={inputC}
-                            value={goalMinute}
-                            onChange={(e) => setGoalMinute(e.target.value)}
-                          />
-                        </label>
-                        <button
-                          onClick={addGoal}
-                          className="rounded-md bg-base px-3 py-2 text-xs hover:bg-base/70"
-                        >
-                          + gol
-                        </button>
-                        {newMatch.goals.map((g, i) => (
-                          <button
-                            key={i}
-                            onClick={() => removeGoal(i)}
-                            title="Remover gol"
-                            className="rounded-md bg-gold px-2 py-0.5 text-[11px] text-[#1a1a1e]"
-                          >
-                            {playerName(g.playerId)}
-                            {g.minute != null ? ` ${g.minute}'` : ""} ({g.goals}) ✕
-                          </button>
-                        ))}
-                      </div>
-
-                      {/* assistências por jogador */}
-                      <div className="flex flex-wrap items-end gap-2 rounded-md bg-panel p-2">
-                        <label className="flex flex-col gap-1 text-[11px]">
-                          Assistência
-                          <select
-                            className={inputC}
-                            value={assistPlayer}
-                            onChange={(e) => setAssistPlayer(e.target.value)}
-                          >
-                            <option value="">Selecione…</option>
-                            {allPlayers.map((p) => (
-                              <option key={p.id} value={p.id}>
-                                {p.name}
-                              </option>
-                            ))}
-                          </select>
-                        </label>
-                        <label className="flex w-14 flex-col gap-1 text-[11px]">
-                          Assist.
-                          <input
-                            type="number"
-                            min={1}
-                            className={inputC}
-                            value={assistCount}
-                            onChange={(e) => setAssistCount(Number(e.target.value) || 1)}
-                          />
-                        </label>
-                        <button
-                          onClick={addAssist}
-                          className="rounded-md bg-base px-3 py-2 text-xs hover:bg-base/70"
-                        >
-                          + assist.
-                        </button>
-                        {newMatch.assists.map((a, i) => (
-                          <button
-                            key={i}
-                            onClick={() => removeAssist(i)}
-                            title="Remover assistência"
-                            className="rounded-md bg-draw px-2 py-0.5 text-[11px] text-white"
-                          >
-                            {playerName(a.playerId)} ({a.assists}) ✕
-                          </button>
-                        ))}
-                      </div>
-
-                      <div className="flex items-center gap-2">
-                        <button
-                          onClick={saveMatch}
-                          disabled={busy}
-                          className="rounded-md bg-gold px-4 py-2 text-sm font-bold text-[#1a1a1e] hover:opacity-90 disabled:opacity-60"
-                        >
-                          {busy
-                            ? "Salvando…"
-                            : editingMatchId
-                              ? "Salvar alterações"
-                              : "Adicionar súmula"}
-                        </button>
-                        {editingMatchId && (
-                          <button
-                            onClick={resetMatchForm}
-                            disabled={busy}
-                            className="rounded-md border border-white/10 px-4 py-2 text-sm text-faint hover:bg-panel disabled:opacity-60"
-                          >
-                            Cancelar edição
-                          </button>
-                        )}
-                      </div>
+                      </h3>
+                      <button
+                        onClick={startLive}
+                        className="rounded-md bg-loss px-3 py-1.5 text-xs font-bold text-white hover:opacity-90"
+                      >
+                        + Iniciar partida ao vivo
+                      </button>
                     </div>
+                    <ul className="flex flex-col gap-2">
+                      {liveMatches.map((m) => renderMatchRow(m))}
+                      {liveMatches.length === 0 && (
+                        <li className="text-xs text-faint">Nenhuma partida ao vivo.</li>
+                      )}
+                    </ul>
+                    {editorOpen && liveMode && renderEditor()}
                   </div>
 
                   {/* MENSAGENS */}
