@@ -9,12 +9,17 @@ import {
   computeTopAssists,
   playerLines,
   teamScorers,
+  teamResult,
   isGoal,
   type Match,
   type PlayerLine,
 } from "@/lib/tournaments";
 import { statusStyle, type TourTeam } from "@/components/tournaments/shared";
 import MatchSheet, { type SheetData, type SheetSide } from "@/components/tournaments/MatchSheet";
+import TeamStatsSection, {
+  type TeamStat,
+  type StatLeader,
+} from "@/components/tournaments/TeamStatsSection";
 
 /**
  * Tela completa de uma copa (rota /tournaments/[id]).
@@ -342,6 +347,89 @@ export default function TournamentScreen({ data }: { data: ScreenData }) {
     { icon: "futbol" as const, color: ACCENT.gold, value: totalGoals, label: "Gols" },
   ];
 
+  // Estatísticas de cada time DENTRO do torneio (para o modal clicável).
+  const top = (counts: Map<string, number>): StatLeader => {
+    let best: StatLeader = null;
+    for (const [pid, v] of counts) if (v > 0 && (!best || v > best.value)) best = { name: player(pid), value: v };
+    return best;
+  };
+  const teamStats: TeamStat[] = data.teams.map((tm) => {
+    const teamMatches = data.matches.filter(
+      (m) => m.homeTeamId === tm.id || m.awayTeamId === tm.id,
+    );
+    const finishedM = teamMatches.filter((m) => !m.scheduled && !m.isLive);
+    let wins = 0;
+    let losses = 0;
+    let draws = 0;
+    for (const m of finishedM) {
+      const r = teamResult(m, tm.id);
+      if (r === "win") wins++;
+      else if (r === "loss") losses++;
+      else draws++;
+    }
+
+    // contadores por jogador (eventos do time)
+    const g = new Map<string, number>();
+    const a = new Map<string, number>();
+    const y = new Map<string, number>();
+    const rc = new Map<string, number>();
+    for (const m of data.matches)
+      for (const e of m.events)
+        if (e.teamId === tm.id) {
+          if (isGoal(e.type)) g.set(e.playerId, (g.get(e.playerId) ?? 0) + 1);
+          else if (e.type === "assist") a.set(e.playerId, (a.get(e.playerId) ?? 0) + 1);
+          else if (e.type === "yellow_card") y.set(e.playerId, (y.get(e.playerId) ?? 0) + 1);
+          else if (e.type === "red_card") rc.set(e.playerId, (rc.get(e.playerId) ?? 0) + 1);
+        }
+
+    const roster = (data.teamRosters[tm.id] ?? []).filter((r) => r.active);
+    const lineup = POSITIONS.map((pos) => ({
+      sigla: pos.sigla,
+      names: roster
+        .filter((r) => (r.position ?? data.playerPositions[r.playerId] ?? null) === pos.key)
+        .map((r) => player(r.playerId))
+        .sort((x, z) => x.localeCompare(z)),
+    })).filter((grp) => grp.names.length > 0);
+    const semPos = roster
+      .filter((r) => (r.position ?? data.playerPositions[r.playerId] ?? null) === null)
+      .map((r) => player(r.playerId));
+    if (semPos.length) lineup.push({ sigla: "—", names: semPos.sort((x, z) => x.localeCompare(z)) });
+
+    const opp = (m: Match) => (m.homeTeamId === tm.id ? m.awayTeamId : m.homeTeamId);
+    const last = [...finishedM]
+      .sort((x, z) => (z.playedAt ?? "").localeCompare(x.playedAt ?? ""))
+      .slice(0, 5)
+      .map((m) => ({
+        opponent: team(opp(m)),
+        opponentLogo: logo(opp(m)),
+        forScore: m.homeTeamId === tm.id ? m.homeScore : m.awayScore,
+        againstScore: m.homeTeamId === tm.id ? m.awayScore : m.homeScore,
+        result: teamResult(m, tm.id),
+        date: m.playedAt,
+      }));
+    const upcoming = teamMatches
+      .filter((m) => m.scheduled)
+      .sort((x, z) => (x.playedAt ?? "").localeCompare(z.playedAt ?? ""))
+      .map((m) => ({ opponent: team(opp(m)), opponentLogo: logo(opp(m)), date: m.playedAt }));
+
+    return {
+      id: tm.id,
+      name: tm.name,
+      logo: tm.logo,
+      isChampion: tm.id === data.championTeamId,
+      wins,
+      losses,
+      draws,
+      topScorer: top(g),
+      topAssister: top(a),
+      topYellow: top(y),
+      topRed: top(rc),
+      lineup,
+      last,
+      upcoming,
+    };
+  });
+
   return (
     <div className={maxwidth.maxWidthContainer} style={{ height: "auto", position: "static" }}>
       <Link
@@ -603,26 +691,16 @@ export default function TournamentScreen({ data }: { data: ScreenData }) {
           </section>
         )}
 
-        {/* TIMES PARTICIPANTES */}
+        {/* TIMES PARTICIPANTES (clicável → estatísticas do time) */}
         {data.teams.length > 0 && (
           <section>
-            <SectionHeader icon="shield" color={ACCENT.draw} title="Times na disputa" />
-            <div className="flex flex-wrap gap-2.5">
-              {data.teams.map((tm) => {
-                const champ = tm.id === data.championTeamId;
-                return (
-                  <div
-                    key={tm.id}
-                    className="flex items-center gap-2.5 rounded-full bg-panel/60 py-1 pl-1 pr-4 text-sm font-bold"
-                    style={champ ? { boxShadow: `inset 0 0 0 1.5px ${ACCENT.gold}` } : undefined}
-                  >
-                    <TeamLogo logo={tm.logo} size={32} />
-                    {tm.name}
-                    {champ && <Icon name="trophy" className="text-gold" />}
-                  </div>
-                );
-              })}
-            </div>
+            <SectionHeader
+              icon="shield"
+              color={ACCENT.draw}
+              title="Times na disputa"
+              hint="clique para ver as estatísticas"
+            />
+            <TeamStatsSection teams={teamStats} />
           </section>
         )}
 

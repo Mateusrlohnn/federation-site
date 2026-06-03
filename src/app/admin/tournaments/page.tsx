@@ -35,6 +35,7 @@ export default function AdminTournamentsPage() {
   const [editingMatchId, setEditingMatchId] = useState<string | null>(null);
   const [editorOpen, setEditorOpen] = useState(false);
   const [liveMode, setLiveMode] = useState(false); // editor de partida ao vivo
+  const [scheduledMode, setScheduledMode] = useState(false); // editor de partida agendada
   const [evPlayer, setEvPlayer] = useState("");
   const [evType, setEvType] = useState<MatchEventType>("goal");
   const [evMinute, setEvMinute] = useState("");
@@ -122,6 +123,7 @@ export default function AdminTournamentsPage() {
     setEditingMatchId(null);
     setEditorOpen(false);
     setLiveMode(false);
+    setScheduledMode(false);
     setEvPlayer("");
     setEvType("goal");
     setEvMinute("");
@@ -130,7 +132,6 @@ export default function AdminTournamentsPage() {
   function startSumula() {
     resetMatchForm();
     setNewMatch(emptyMatch());
-    setLiveMode(false);
     setEditorOpen(true);
   }
 
@@ -138,6 +139,13 @@ export default function AdminTournamentsPage() {
     resetMatchForm();
     setNewMatch({ ...emptyMatch(), isLive: true });
     setLiveMode(true);
+    setEditorOpen(true);
+  }
+
+  function startScheduled() {
+    resetMatchForm();
+    setNewMatch({ ...emptyMatch(), scheduled: true });
+    setScheduledMode(true);
     setEditorOpen(true);
   }
 
@@ -237,6 +245,7 @@ export default function AdminTournamentsPage() {
     setEditingMatchId(m.id ?? null);
     setNewMatch({ ...m });
     setLiveMode(m.isLive);
+    setScheduledMode(m.scheduled);
     setEditorOpen(true);
     setEvPlayer("");
     setEvType("goal");
@@ -250,9 +259,10 @@ export default function AdminTournamentsPage() {
     if (!draft?.id) return;
     setBusy(true);
     setErr("");
-    const isLive = opts?.endLive ? false : newMatch.isLive;
-    // MVP só vale para partida encerrada (não ao vivo)
-    const mvp = isLive ? null : newMatch.mvpPlayerId;
+    const scheduled = scheduledMode;
+    const isLive = opts?.endLive || scheduled ? false : newMatch.isLive;
+    // MVP só vale para partida encerrada (não ao vivo / não agendada)
+    const mvp = isLive || scheduled ? null : newMatch.mvpPlayerId;
     const row = {
       tournament_id: draft.id,
       home_team_id: newMatch.homeTeamId,
@@ -261,6 +271,7 @@ export default function AdminTournamentsPage() {
       home_score: teamGoals(newMatch.events, newMatch.homeTeamId),
       away_score: teamGoals(newMatch.events, newMatch.awayTeamId),
       is_live: isLive,
+      scheduled,
       mvp_player_id: mvp,
       played_at: newMatch.playedAt || null,
       notes: newMatch.notes || null,
@@ -297,10 +308,14 @@ export default function AdminTournamentsPage() {
     if (opts?.endLive) {
       // partida encerrada vira súmula: continua editável para definir o MVP
       setMsg("Partida encerrada! Súmula criada — defina o MVP, se quiser.");
-      setNewMatch((m) => ({ ...m, isLive: false }));
+      setNewMatch((m) => ({ ...m, isLive: false, scheduled: false }));
       setEditingMatchId(matchId);
       setLiveMode(false);
+      setScheduledMode(false);
       setEditorOpen(true);
+    } else if (scheduled) {
+      setMsg(editingMatchId ? "Agendamento atualizado." : "Partida agendada.");
+      resetMatchForm();
     } else {
       setMsg(editingMatchId ? "Súmula atualizada." : isLive ? "Partida ao vivo salva." : "Súmula adicionada.");
       if (isLive) {
@@ -344,8 +359,9 @@ export default function AdminTournamentsPage() {
 
   const scorers = computeTopScorers(matches);
   const matchTeams = draft && draft.teamIds.length ? allTeams.filter((t) => draft.teamIds.includes(t.id)) : allTeams;
-  const sumulas = matches.filter((m) => !m.isLive);
+  const sumulas = matches.filter((m) => !m.isLive && !m.scheduled);
   const liveMatches = matches.filter((m) => m.isLive);
+  const scheduledMatches = matches.filter((m) => m.scheduled);
   // placar automático do rascunho (derivado dos gols)
   const draftScoreA = teamGoals(newMatch.events, newMatch.homeTeamId);
   const draftScoreB = teamGoals(newMatch.events, newMatch.awayTeamId);
@@ -455,6 +471,13 @@ export default function AdminTournamentsPage() {
           </label>
         </div>
 
+        {scheduledMode ? (
+          <p className="rounded-md bg-panel p-2 text-[11px] text-faint">
+            Defina os dois times e a data. Para lançar gols, cartões e MVP, clique em
+            “Registrar resultado” ou “Iniciar ao vivo”.
+          </p>
+        ) : (
+          <>
         {/* eventos (gols, pênaltis, assistências, cartões) */}
         <div className="flex flex-col gap-2 rounded-md bg-panel p-2">
           {!bothTeams ? (
@@ -559,6 +582,8 @@ export default function AdminTournamentsPage() {
             </select>
           </label>
         )}
+          </>
+        )}
 
         {/* ações */}
         <div className="flex flex-wrap items-center gap-2">
@@ -569,13 +594,17 @@ export default function AdminTournamentsPage() {
           >
             {busy
               ? "Salvando…"
-              : liveMode
+              : scheduledMode
                 ? editingMatchId
-                  ? "Salvar ao vivo"
-                  : "Iniciar partida ao vivo"
-                : editingMatchId
-                  ? "Salvar alterações"
-                  : "Adicionar súmula"}
+                  ? "Salvar agendamento"
+                  : "Agendar partida"
+                : liveMode
+                  ? editingMatchId
+                    ? "Salvar ao vivo"
+                    : "Iniciar partida ao vivo"
+                  : editingMatchId
+                    ? "Salvar alterações"
+                    : "Adicionar súmula"}
           </button>
           {liveMode && editingMatchId && (
             <button
@@ -585,6 +614,32 @@ export default function AdminTournamentsPage() {
             >
               ⏹ Encerrar partida
             </button>
+          )}
+          {scheduledMode && (
+            <>
+              <button
+                onClick={() => {
+                  setScheduledMode(false);
+                  setLiveMode(false);
+                  setNewMatch((m) => ({ ...m, scheduled: false, isLive: false }));
+                }}
+                disabled={busy}
+                className="rounded-md bg-win px-4 py-2 text-sm font-bold text-[#0a1f10] hover:opacity-90 disabled:opacity-60"
+              >
+                Registrar resultado
+              </button>
+              <button
+                onClick={() => {
+                  setScheduledMode(false);
+                  setLiveMode(true);
+                  setNewMatch((m) => ({ ...m, scheduled: false, isLive: true }));
+                }}
+                disabled={busy}
+                className="rounded-md bg-loss px-4 py-2 text-sm font-bold text-white hover:opacity-90 disabled:opacity-60"
+              >
+                Iniciar ao vivo
+              </button>
+            </>
           )}
           <button
             onClick={resetMatchForm}
@@ -814,7 +869,7 @@ export default function AdminTournamentsPage() {
                         <li className="text-xs text-faint">Nenhuma súmula ainda.</li>
                       )}
                     </ul>
-                    {editorOpen && !liveMode && renderEditor()}
+                    {editorOpen && !liveMode && !scheduledMode && renderEditor()}
                   </div>
 
                   {/* PARTIDA AO VIVO */}
@@ -844,6 +899,26 @@ export default function AdminTournamentsPage() {
                       )}
                     </ul>
                     {editorOpen && liveMode && renderEditor()}
+                  </div>
+
+                  {/* PRÓXIMAS PARTIDAS (agendadas) */}
+                  <div className="rounded-lg bg-card p-4">
+                    <div className="mb-3 flex items-center justify-between gap-2">
+                      <h3 className="text-sm font-bold">Próximas partidas ({scheduledMatches.length})</h3>
+                      <button
+                        onClick={startScheduled}
+                        className="rounded-md bg-draw px-3 py-1.5 text-xs font-bold text-white hover:opacity-90"
+                      >
+                        + Agendar partida
+                      </button>
+                    </div>
+                    <ul className="flex flex-col gap-2">
+                      {scheduledMatches.map((m) => renderMatchRow(m))}
+                      {scheduledMatches.length === 0 && (
+                        <li className="text-xs text-faint">Nenhuma partida agendada.</li>
+                      )}
+                    </ul>
+                    {editorOpen && scheduledMode && renderEditor()}
                   </div>
 
                   {/* MENSAGENS */}

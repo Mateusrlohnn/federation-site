@@ -49,6 +49,7 @@ export type Match = {
   homeScore: number;
   awayScore: number;
   isLive: boolean;
+  scheduled: boolean;
   mvpPlayerId: string | null;
   playedAt: string | null;
   notes: string;
@@ -100,6 +101,7 @@ export function emptyMatch(): Match {
     homeScore: 0,
     awayScore: 0,
     isLive: false,
+    scheduled: false,
     mvpPlayerId: null,
     playedAt: null,
     notes: "",
@@ -135,6 +137,7 @@ export function matchFromRow(r: Record<string, unknown>): Match {
     homeScore: Number(r.home_score) || 0,
     awayScore: Number(r.away_score) || 0,
     isLive: r.is_live === true,
+    scheduled: r.scheduled === true,
     mvpPlayerId: (r.mvp_player_id as string) ?? null,
     playedAt: (r.played_at as string) ?? null,
     notes: (r.notes as string) ?? "",
@@ -192,6 +195,15 @@ export type PlayerLine = {
   yellow: number;
   red: number;
 };
+
+/** Resultado de uma partida para um time: vitória, derrota ou empate. */
+export function teamResult(m: Match, teamId: string): "win" | "loss" | "draw" {
+  const forScore = m.homeTeamId === teamId ? m.homeScore : m.awayScore;
+  const against = m.homeTeamId === teamId ? m.awayScore : m.homeScore;
+  if (forScore > against) return "win";
+  if (forScore < against) return "loss";
+  return "draw";
+}
 
 /** Agrega os eventos de uma partida por jogador (para a ficha pós-jogo). */
 export function playerLines(events: MatchEvent[]): Map<string, PlayerLine> {

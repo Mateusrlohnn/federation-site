@@ -62,6 +62,7 @@ create table if not exists public.matches (
   home_score    int  not null default 0,
   away_score    int  not null default 0,
   is_live       boolean not null default false, -- partida ao vivo (placar manual)
+  scheduled     boolean not null default false, -- próxima partida (ainda sem resultado)
   mvp_player_id uuid references public.players(id) on delete set null, -- MVP (após o fim)
   played_at     date,
   notes         text,
