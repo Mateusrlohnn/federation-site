@@ -261,7 +261,7 @@ export default function TeamStatsSection({ teams }: { teams: TeamStat[] }) {
 
   return (
     <>
-      <div className="flex flex-wrap gap-2.5">
+      <div className="flex flex-wrap justify-center gap-2.5">
         {teams.map((t) => (
           <button
             key={t.id}

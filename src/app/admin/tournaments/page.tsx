@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { createClient } from "@/lib/supabase/client";
 import ImageUpload from "@/components/ui/ImageUpload";
+import SwissAdminPanel from "@/components/tournaments/SwissAdminPanel";
 import {
   TOURNAMENT_STATUSES,
   MATCH_EVENT_TYPES,
@@ -17,6 +18,21 @@ import {
   type MatchEventType,
   type TournamentMessage,
 } from "@/lib/tournaments";
+
+import {
+  TOURNAMENT_FORMATS,
+  generateRoundRobin,
+  splitGroups,
+  suggestGroupCount,
+  buildKnockout,
+  computeSwissRecords,
+  generateSwissPairs,
+  playedPairs,
+  pairKey,
+  BYE,
+  type TournamentFormat,
+  type Pairing,
+} from "@/lib/formats";
 
 type Lite = { id: string; name: string };
 
@@ -172,6 +188,8 @@ export default function AdminTournamentsPage() {
       logo_url: draft.logoUrl?.trim() || null,
       champion_team_id: champion,
       organizer_id: draft.organizerId || null,
+      format: draft.format || null,
+      group_count: draft.groupCount || null,
     };
     if (tid) {
       const { error } = await supabase.from("tournaments").update(row).eq("id", tid);
@@ -181,11 +199,26 @@ export default function AdminTournamentsPage() {
       if (error || !data) return finish(error?.message ?? "Erro ao criar torneio.");
       tid = data.id as string;
     }
+    // sincroniza os times preservando seed/group_label de um sorteio anterior
+    const { data: existing } = await supabase
+      .from("tournament_teams")
+      .select("team_id, seed, group_label")
+      .eq("tournament_id", tid);
+    const prev = new Map(
+      ((existing as { team_id: string; seed: number | null; group_label: string | null }[]) ?? []).map(
+        (x) => [x.team_id, x],
+      ),
+    );
     await supabase.from("tournament_teams").delete().eq("tournament_id", tid);
     if (draft.teamIds.length)
-      await supabase
-        .from("tournament_teams")
-        .insert(draft.teamIds.map((team_id) => ({ tournament_id: tid, team_id })));
+      await supabase.from("tournament_teams").insert(
+        draft.teamIds.map((team_id) => ({
+          tournament_id: tid,
+          team_id,
+          seed: prev.get(team_id)?.seed ?? null,
+          group_label: prev.get(team_id)?.group_label ?? null,
+        })),
+      );
     setBusy(false);
     setMsg(`Torneio "${draft.name}" salvo.`);
     setDraft({ ...draft, id: tid });
@@ -335,6 +368,187 @@ export default function AdminTournamentsPage() {
     await supabase.from("matches").delete().eq("id", id);
     setBusy(false);
     await loadSub(draft.id);
+  }
+
+  // Gera partidas agendadas a partir do formato + sorteio (funções puras).
+  async function generateFixtures() {
+    if (!draft?.id || !draft.format) return;
+    if (draft.teamIds.length < 2) return setErr("Vincule ao menos 2 times ao campeonato.");
+    if (
+      !confirm(
+        "Gerar as partidas deste formato? As partidas agendadas atuais serão substituídas (resultados já lançados são mantidos).",
+      )
+    )
+      return;
+    setBusy(true);
+    setErr("");
+    setMsg("");
+
+    // lê o sorteio (ordem/grupos); sem sorteio usa a ordem dos vínculos
+    const { data: tt } = await supabase
+      .from("tournament_teams")
+      .select("team_id, seed, group_label")
+      .eq("tournament_id", draft.id);
+    const rows =
+      (tt as { team_id: string; seed: number | null; group_label: string | null }[]) ?? [];
+    const ordered = [...rows].sort((a, b) => (a.seed ?? 9999) - (b.seed ?? 9999));
+    const ids = ordered.length ? ordered.map((r) => r.team_id) : draft.teamIds;
+    const groupOf = new Map(rows.map((r) => [r.team_id, r.group_label]));
+
+    const pairs: { home: string; away: string }[] = [];
+    const add = (ps: Pairing[]) =>
+      ps.forEach((p) => {
+        if (p.home !== BYE && p.away !== BYE) pairs.push({ home: p.home, away: p.away });
+      });
+
+    if (draft.format === "pontos_corridos") {
+      generateRoundRobin(ids).forEach((r) => add(r.pairings));
+    } else if (draft.format === "grupos_mata_mata") {
+      const labeled = ids.filter((id) => groupOf.get(id));
+      let groups: { teamIds: string[] }[];
+      if (labeled.length) {
+        const map = new Map<string, string[]>();
+        for (const id of ids) {
+          const key = groupOf.get(id) ?? "Grupo A";
+          if (!map.has(key)) map.set(key, []);
+          map.get(key)!.push(id);
+        }
+        groups = [...map.values()].map((teamIds) => ({ teamIds }));
+      } else {
+        groups = splitGroups(ids, draft.groupCount ?? undefined);
+      }
+      groups.forEach((g) => generateRoundRobin(g.teamIds).forEach((r) => add(r.pairings)));
+    } else if (draft.format === "mata_mata") {
+      const rounds = buildKnockout(ids, []);
+      rounds[0]?.matches.forEach((m) => {
+        if (m.home && m.away && m.home !== BYE && m.away !== BYE)
+          pairs.push({ home: m.home, away: m.away });
+      });
+    } else if (draft.format === "suico") {
+      // próxima rodada conforme os resultados atuais (não repete confrontos)
+      add(generateSwissPairs(computeSwissRecords(ids, matches), playedPairs(matches)));
+    }
+
+    // evita duplicatas: pula confrontos já jogados e repetidos no próprio lote
+    const done = playedPairs(matches);
+    const seen = new Set<string>();
+    const fresh = pairs.filter((p) => {
+      const k = pairKey(p.home, p.away);
+      if (done.has(k) || seen.has(k)) return false;
+      seen.add(k);
+      return true;
+    });
+
+    // remove as partidas agendadas anteriores (não duplica a cada clique)
+    await supabase.from("matches").delete().eq("tournament_id", draft.id).eq("scheduled", true);
+
+    if (fresh.length === 0) {
+      setBusy(false);
+      await loadSub(draft.id);
+      return setMsg("Nenhuma partida nova a gerar (todas já foram jogadas).");
+    }
+
+    const { error } = await supabase.from("matches").insert(
+      fresh.map((p) => ({
+        tournament_id: draft.id,
+        home_team_id: p.home,
+        away_team_id: p.away,
+        scheduled: true,
+      })),
+    );
+    setBusy(false);
+    if (error) return setErr(error.message);
+    setMsg(`${fresh.length} partida(s) gerada(s) em "Próximas partidas".`);
+    await loadSub(draft.id);
+  }
+
+  // Salva o resultado de um confronto suíço. Se já existe a partida (sorteada/
+  // agendada), atualiza-a; senão cria finalizada. Recalcula a classificação.
+  async function saveSwissResult(
+    home: string,
+    away: string,
+    hs: number,
+    as: number,
+    matchId?: string,
+  ) {
+    if (!draft?.id) return;
+    setBusy(true);
+    setErr("");
+    setMsg("");
+    let error;
+    if (matchId) {
+      ({ error } = await supabase
+        .from("matches")
+        .update({ home_score: hs, away_score: as, scheduled: false, is_live: false })
+        .eq("id", matchId));
+    } else {
+      ({ error } = await supabase.from("matches").insert({
+        tournament_id: draft.id,
+        home_team_id: home,
+        away_team_id: away,
+        home_score: hs,
+        away_score: as,
+        scheduled: false,
+        is_live: false,
+      }));
+    }
+    setBusy(false);
+    if (error) return setErr(error.message);
+    setMsg("Resultado computado — classificação atualizada.");
+    await loadSub(draft.id);
+  }
+
+  // Sorteia uma rodada do suíço: grava os confrontos como partidas agendadas.
+  async function scheduleSwissRound(pairs: { home: string; away: string }[]) {
+    if (!draft?.id || pairs.length === 0) return;
+    setBusy(true);
+    setErr("");
+    setMsg("");
+    const { error } = await supabase.from("matches").insert(
+      pairs.map((p) => ({
+        tournament_id: draft.id,
+        home_team_id: p.home,
+        away_team_id: p.away,
+        scheduled: true,
+      })),
+    );
+    setBusy(false);
+    if (error) return setErr(error.message);
+    setMsg(`🎲 Rodada sorteada — ${pairs.length} confronto(s) gerado(s).`);
+    await loadSub(draft.id);
+  }
+
+  // Sorteio: embaralha os times e grava seed + grupo (chaveamento/grupos).
+  async function drawTeams() {
+    if (!draft?.id) return;
+    const ids = [...draft.teamIds];
+    if (ids.length < 2) return setErr("Vincule ao menos 2 times ao campeonato.");
+    if (!confirm("Realizar o sorteio? Isso define a ordem/grupos do chaveamento."))
+      return;
+    // Fisher-Yates
+    for (let i = ids.length - 1; i > 0; i--) {
+      const j = Math.floor(Math.random() * (i + 1));
+      [ids[i], ids[j]] = [ids[j], ids[i]];
+    }
+    const isGroups = draft.format === "grupos_mata_mata";
+    const gc = isGroups ? Math.max(2, draft.groupCount || suggestGroupCount(ids.length)) : 0;
+
+    setBusy(true);
+    setErr("");
+    setMsg("");
+    await supabase.from("tournament_teams").delete().eq("tournament_id", draft.id);
+    const { error } = await supabase.from("tournament_teams").insert(
+      ids.map((team_id, i) => ({
+        tournament_id: draft.id,
+        team_id,
+        seed: i + 1,
+        group_label: isGroups ? `Grupo ${String.fromCharCode(65 + (i % gc))}` : null,
+      })),
+    );
+    setBusy(false);
+    if (error) return setErr(error.message);
+    setMsg("🎲 Sorteio realizado! Ordem e grupos definidos.");
+    await loadLists();
   }
 
   async function addMessage() {
@@ -779,6 +993,78 @@ export default function AdminTournamentsPage() {
                   </select>
                 </label>
 
+                {/* FORMATO DO CAMPEONATO + SORTEIO */}
+                <div className="flex flex-col gap-2 rounded-md bg-panel/40 p-3">
+                  <label className="flex flex-col gap-1 text-xs">
+                    <span className="font-bold">🏗 Formato do campeonato</span>
+                    <select
+                      className={inputC}
+                      value={draft.format ?? ""}
+                      onChange={(e) =>
+                        setDraft({
+                          ...draft,
+                          format: (e.target.value || null) as TournamentFormat | null,
+                        })
+                      }
+                    >
+                      <option value="">— Não definido —</option>
+                      {TOURNAMENT_FORMATS.map((f) => (
+                        <option key={f.value} value={f.value}>
+                          {f.label} — {f.desc}
+                        </option>
+                      ))}
+                    </select>
+                  </label>
+
+                  <span className="text-[11px] text-faint">
+                    {draft.teamIds.length} time(s) vinculado(s).
+                  </span>
+
+                  {/* nº de grupos (apenas grupos + mata-mata) */}
+                  {draft.format === "grupos_mata_mata" && (
+                    <label className="flex w-40 flex-col gap-1 text-xs">
+                      Número de grupos
+                      <input
+                        type="number"
+                        min={2}
+                        placeholder={`${suggestGroupCount(draft.teamIds.length)}`}
+                        className={inputC}
+                        value={draft.groupCount ?? ""}
+                        onChange={(e) =>
+                          setDraft({ ...draft, groupCount: Number(e.target.value) || null })
+                        }
+                      />
+                    </label>
+                  )}
+
+                  {draft.id && draft.format && (
+                    <div className="flex flex-wrap gap-2 pt-1">
+                      <button
+                        type="button"
+                        onClick={drawTeams}
+                        disabled={busy}
+                        className="rounded-md bg-gold px-3 py-1.5 text-xs font-bold text-[#1a1a1e] hover:opacity-90 disabled:opacity-60"
+                      >
+                        🎲 Sortear chaveamento
+                      </button>
+                      <button
+                        type="button"
+                        onClick={generateFixtures}
+                        disabled={busy}
+                        className="rounded-md bg-draw px-3 py-1.5 text-xs font-bold text-white hover:opacity-90 disabled:opacity-60"
+                      >
+                        ⚙ Gerar partidas
+                      </button>
+                    </div>
+                  )}
+                  {draft.id && draft.format && (
+                    <span className="text-[11px] text-faint">
+                      Dica: defina o formato e os times, clique em <b>Sortear</b> e depois em{" "}
+                      <b>Gerar partidas</b>.
+                    </span>
+                  )}
+                </div>
+
                 {/* CAMPEÃO — define os títulos contados na página do time */}
                 <label className="flex flex-col gap-1 text-xs">
                   <span className="font-bold">🏆 Time campeão</span>
@@ -920,6 +1206,22 @@ export default function AdminTournamentsPage() {
                     </ul>
                     {editorOpen && scheduledMode && renderEditor()}
                   </div>
+
+                  {/* SISTEMA SUÍÇO — classificação + confrontos interativos */}
+                  {draft.format === "suico" && (
+                    <div className="rounded-lg bg-card p-4">
+                      <h3 className="mb-3 text-sm font-bold">
+                        Sistema Suíço — classificação e confrontos
+                      </h3>
+                      <SwissAdminPanel
+                        teams={matchTeams}
+                        matches={matches}
+                        busy={busy}
+                        onSaveResult={saveSwissResult}
+                        onScheduleRound={scheduleSwissRound}
+                      />
+                    </div>
+                  )}
 
                   {/* MENSAGENS */}
                   <div className="rounded-lg bg-card p-4">

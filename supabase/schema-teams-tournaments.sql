@@ -27,6 +27,8 @@ create table if not exists public.team_players (
   primary key (team_id, player_id)
 );
 
+-- nota: tournament_teams ganha seed/group_label mais abaixo (sorteio)
+
 -- ---------- TORNEIOS ----------
 create table if not exists public.tournaments (
   id               uuid primary key default gen_random_uuid(),
@@ -35,6 +37,8 @@ create table if not exists public.tournaments (
   champion_team_id uuid references public.teams(id) on delete set null,   -- time campeão (opcional)
   organizer_id     uuid references public.players(id) on delete set null, -- organizador (opcional)
   logo_url         text,  -- foto/escudo do torneio (quadrada); image_url é o banner (larga)
+  format           text check (format in ('pontos_corridos', 'suico', 'grupos_mata_mata', 'mata_mata')),
+  group_count      int,   -- nº de grupos (formato grupos_mata_mata)
   created_at       timestamptz not null default now(),
   updated_at       timestamptz not null default now()
 );
@@ -43,6 +47,8 @@ create table if not exists public.tournaments (
 create table if not exists public.tournament_teams (
   tournament_id uuid not null references public.tournaments(id) on delete cascade,
   team_id       uuid not null references public.teams(id)       on delete cascade,
+  seed          int,   -- ordem do sorteio (1..n)
+  group_label   text,  -- grupo atribuído no sorteio (ex.: "Grupo A")
   primary key (tournament_id, team_id)
 );
 

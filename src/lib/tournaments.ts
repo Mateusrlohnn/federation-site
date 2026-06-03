@@ -1,3 +1,5 @@
+import type { TournamentFormat } from "@/lib/formats";
+
 export type TournamentStatus = "Em andamento" | "Finalizado" | "Em breve";
 
 export const TOURNAMENT_STATUSES: TournamentStatus[] = [
@@ -16,6 +18,8 @@ export type Tournament = {
   playerIds: string[];
   championTeamId: string | null; // time campeão (opcional)
   organizerId: string | null; // organizador (opcional)
+  format: TournamentFormat | null; // formato do campeonato (opcional)
+  groupCount: number | null; // nº de grupos (grupos_mata_mata)
 };
 
 export type MatchEventType =
@@ -91,6 +95,8 @@ export function emptyTournament(): Tournament {
     playerIds: [],
     championTeamId: null,
     organizerId: null,
+    format: null,
+    groupCount: null,
   };
 }
 
@@ -122,6 +128,8 @@ export function tournamentFromRow(r: Record<string, unknown>): Tournament {
     playerIds: players.map((x) => x.player_id),
     championTeamId: (r.champion_team_id as string) ?? null,
     organizerId: (r.organizer_id as string) ?? null,
+    format: (r.format as TournamentFormat) ?? null,
+    groupCount: r.group_count != null ? Number(r.group_count) : null,
   };
 }
 

@@ -2,7 +2,13 @@ import type { Match } from "@/lib/tournaments";
 
 /** Tipos e estilos compartilhados entre a listagem e a tela da copa. */
 
-export type TourTeam = { id: string; name: string; logo: string };
+export type TourTeam = {
+  id: string;
+  name: string;
+  logo: string;
+  seed?: number | null; // ordem do sorteio
+  group?: string | null; // grupo atribuído no sorteio
+};
 
 /** Dados de um torneio usados na listagem (cards). */
 export type TournamentView = {

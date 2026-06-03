@@ -20,6 +20,8 @@ import TeamStatsSection, {
   type TeamStat,
   type StatLeader,
 } from "@/components/tournaments/TeamStatsSection";
+import FormatView from "@/components/tournaments/FormatView";
+import { formatLabel, type TournamentFormat } from "@/lib/formats";
 
 /**
  * Tela completa de uma copa (rota /tournaments/[id]).
@@ -37,6 +39,8 @@ export type ScreenData = {
   championName: string | null;
   championTeamId: string | null;
   organizerName: string | null;
+  format: TournamentFormat | null;
+  groupCount: number | null;
   teams: TourTeam[];
   matches: Match[];
   messages: { body: string }[];
@@ -511,6 +515,24 @@ export default function TournamentScreen({ data }: { data: ScreenData }) {
       </div>
 
       <div className="mt-8 flex flex-col gap-10">
+        {/* FORMATO: tabela de classificação / chave / suíço */}
+        {data.format && (
+          <section>
+            <SectionHeader
+              icon="trophy"
+              color={ACCENT.gold}
+              title={formatLabel(data.format)}
+              hint="atualiza conforme os resultados"
+            />
+            <FormatView
+              format={data.format}
+              teams={data.teams}
+              matches={data.matches}
+              groupCount={data.groupCount}
+            />
+          </section>
+        )}
+
         {/* AO VIVO */}
         {live.length > 0 && (
           <section>

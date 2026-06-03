@@ -4,6 +4,7 @@ import type { TourTeam } from "@/components/tournaments/shared";
 import { publicClient, supabaseConfigured } from "@/lib/supabase/public";
 import { matchFromRow } from "@/lib/tournaments";
 import { asPosition, type Position } from "@/lib/teams";
+import type { TournamentFormat } from "@/lib/formats";
 
 export const dynamic = "force-dynamic";
 
@@ -15,7 +16,7 @@ async function getData(id: string): Promise<ScreenData | null> {
       supabase
         .from("tournaments")
         .select(
-          "*, tournament_teams(team_id), matches(*, match_events(player_id, team_id, type, minute)), tournament_messages(body)",
+          "*, tournament_teams(team_id, seed, group_label), matches(*, match_events(player_id, team_id, type, minute)), tournament_messages(body)",
         )
         .eq("id", id)
         .single(),
@@ -54,14 +55,20 @@ async function getData(id: string): Promise<ScreenData | null> {
       });
     });
 
-    const teamIds = ((r.tournament_teams as { team_id: string }[] | undefined) ?? []).map(
-      (x) => x.team_id,
-    );
-    const teams: TourTeam[] = teamIds.map((tid) => ({
-      id: tid,
-      name: teamNames[tid] ?? "—",
-      logo: teamLogos[tid] ?? "",
-    }));
+    const ttRows =
+      (r.tournament_teams as
+        | { team_id: string; seed?: unknown; group_label?: unknown }[]
+        | undefined) ?? [];
+    // ordena pelo sorteio (seed); sem seed vai para o fim
+    const teams: TourTeam[] = [...ttRows]
+      .sort((x, y) => (Number(x.seed ?? 9999) || 9999) - (Number(y.seed ?? 9999) || 9999))
+      .map((x) => ({
+        id: x.team_id,
+        name: teamNames[x.team_id] ?? "—",
+        logo: teamLogos[x.team_id] ?? "",
+        seed: x.seed != null ? Number(x.seed) : null,
+        group: (x.group_label as string) ?? null,
+      }));
     const championTeamId = (r.champion_team_id as string) ?? null;
 
     return {
@@ -73,6 +80,8 @@ async function getData(id: string): Promise<ScreenData | null> {
       championTeamId,
       championName: championTeamId ? teamNames[championTeamId] ?? null : null,
       organizerName: r.organizer_id ? playerNames[r.organizer_id as string] ?? null : null,
+      format: (r.format as TournamentFormat) ?? null,
+      groupCount: r.group_count != null ? Number(r.group_count) : null,
       teams,
       matches: ((r.matches as Record<string, unknown>[]) ?? []).map(matchFromRow),
       messages: (r.tournament_messages as { body: string }[]) ?? [],
