@@ -1,36 +1,79 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# Federação Rebug
 
-## Getting Started
+Site da Federação Rebug (futebol 1Q do Hubbe) — feito com **Next.js 16 + Tailwind v4 + Supabase**.
 
-First, run the development server:
+## Estrutura do projeto
 
-```bash
-npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
+```
+federation-site/
+├── data-source/              # Dados-fonte (planilha original)
+│   └── Hall of Fame.xlsx
+├── public/                   # Arquivos estáticos servidos como /
+│   ├── rebug-dc.webp         #   logo da federação
+│   ├── avatars/              #   avatares dos organizadores (home)
+│   └── images/               #   banner da home (home.webp)
+├── scripts/                  # Scripts utilitários (rodar com `node`)
+│   ├── import-hall-of-fame.mjs  # planilha .xlsx  ->  src/data/hall-of-fame.json
+│   ├── seed-supabase.mjs        # carrega os jogadores no banco Supabase
+│   └── make-icons.mjs           # gera favicon/ícone do app a partir da logo
+├── supabase/
+│   └── schema.sql            # tabelas + regras de acesso (RLS) do banco
+├── src/
+│   ├── app/                  # Rotas (cada pasta = uma página)
+│   │   ├── layout.tsx        #   layout raiz (header + footer + fontes)
+│   │   ├── page.tsx          #   home (hero + organizadores)
+│   │   ├── globals.css       #   estilos globais / tema
+│   │   ├── icon.png          #   ícone do app (gerado da logo)
+│   │   ├── teams/            #   /teams
+│   │   ├── players/          #   /players  (Hall of Fame, lê do banco)
+│   │   ├── tournaments/      #   /tournaments
+│   │   ├── rules/            #   /rules
+│   │   └── admin/            #   /admin e /admin/login (painel restrito)
+│   ├── components/
+│   │   ├── layout/           #   Header, Footer
+│   │   ├── ui/               #   Icon (ícones FontAwesome inline)
+│   │   ├── home/             #   SplineScene (fundo 3D)
+│   │   └── players/          #   PlayersView (tabela do Hall of Fame)
+│   ├── lib/
+│   │   ├── hof.ts            #   tipos, pesos de pontuação e mapeamento dos dados
+│   │   └── supabase/         #   clientes do Supabase (public + browser)
+│   ├── data/
+│   │   └── hall-of-fame.json #   dados importados (fallback quando offline)
+│   └── styles/               #   CSS Modules compartilhados (maxwidth, hero)
+└── .env.local               # chaves do Supabase (NÃO vai pro Git)
 ```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+## Rodando localmente
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+```bash
+npm install
+npm run dev        # http://localhost:3000
+```
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+Outros comandos: `npm run build` (produção) · `npm run start` (servir o build).
 
-## Learn More
+## Banco de dados (Supabase)
 
-To learn more about Next.js, take a look at the following resources:
+As variáveis ficam em `.env.local`:
 
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
+| Variável | Para quê |
+|---|---|
+| `NEXT_PUBLIC_SUPABASE_URL` | URL do projeto (`https://xxxx.supabase.co`) |
+| `NEXT_PUBLIC_SUPABASE_ANON_KEY` | chave pública (leitura no navegador) |
+| `SUPABASE_SERVICE_ROLE_KEY` | chave secreta — só usada localmente pelo `seed-supabase.mjs` |
 
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
+**Acesso:** todos podem **ler**; só e-mails na tabela `admins` podem **editar** (controlado por RLS).
+O painel de edição fica em `/admin` (login em `/admin/login`).
 
-## Deploy on Vercel
+### Atualizar os dados a partir da planilha
+```bash
+node scripts/import-hall-of-fame.mjs   # lê data-source/Hall of Fame.xlsx -> JSON
+node scripts/seed-supabase.mjs         # envia para o Supabase
+```
 
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
-
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+### Trocar a logo
+Substitua `public/rebug-dc.webp` e rode:
+```bash
+node scripts/make-icons.mjs            # regenera o favicon/ícone do app
+```
+# federation-site
