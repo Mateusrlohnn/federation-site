@@ -7,6 +7,8 @@ export type Post = {
   body: string;
   mediaUrl: string | null;
   mediaKind: MediaKind | null;
+  likes: number;
+  dislikes: number;
   createdAt: string;
 };
 
@@ -18,6 +20,8 @@ export function postFromRow(r: Record<string, unknown>): Post {
     body: String(r.body ?? ""),
     mediaUrl: (r.media_url as string) ?? null,
     mediaKind: (r.media_kind as MediaKind) ?? null,
+    likes: Number(r.likes ?? 0),
+    dislikes: Number(r.dislikes ?? 0),
     createdAt: r.created_at as string,
   };
 }
