@@ -11,6 +11,7 @@ const tabs = [
   { href: "/admin/players", label: "Jogadores" },
   { href: "/admin/teams", label: "Times" },
   { href: "/admin/tournaments", label: "Torneios" },
+  { href: "/admin/rules", label: "Regras" },
 ];
 
 export default function AdminLayout({ children }: { children: React.ReactNode }) {
