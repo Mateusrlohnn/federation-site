@@ -31,3 +31,6 @@ create policy "media_admin_update" on storage.objects
 drop policy if exists "media_admin_delete" on storage.objects;
 create policy "media_admin_delete" on storage.objects
   for delete using (bucket_id = 'media' and public.is_admin());
+
+-- (revertido) upload do feed continua só-admin, como as demais mídias.
+drop policy if exists "media_feed_public_insert" on storage.objects;
