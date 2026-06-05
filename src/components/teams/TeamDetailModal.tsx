@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect } from "react";
+import { useEffect, useState } from "react";
 import Icon from "@/components/ui/Icon";
 import { ACCENT, ProportionBar } from "@/components/ui/stats";
 import { avatarUrl } from "@/lib/hof";
@@ -27,15 +27,25 @@ export type CupEntry = {
   championTeamId: string | null;
   teamIds: string[];
 };
+export type TeamPlayerStat = {
+  name: string;
+  nick?: string;
+  goals: number;
+  assists: number;
+  yellow: number;
+  red: number;
+};
 export type TeamDetail = {
   id: string;
   name: string;
   logo: string;
   titles: number;
   runnerUps: number;
-  wins: number;
-  losses: number;
+  wins: number; // computado a partir das partidas
+  losses: number; // computado a partir das partidas
+  draws: number; // computado a partir das partidas
   roster: RosterEntry[];
+  playerStats: TeamPlayerStat[]; // gols/assist/cartões por jogador (todas as partidas)
 };
 
 const statusStyle: Record<string, string> = {
@@ -108,6 +118,8 @@ export default function TeamDetailModal({
   cups: CupEntry[];
   onClose: () => void;
 }) {
+  const [tab, setTab] = useState<"overview" | "stats">("overview");
+
   useEffect(() => {
     function onKey(e: KeyboardEvent) {
       if (e.key === "Escape") onClose();
@@ -177,8 +189,30 @@ export default function TeamDetailModal({
           </div>
         </div>
 
-        {/* Estatísticas + proporção V/D */}
-        <div className="mt-5 grid grid-cols-4 gap-2">
+        {/* abas: Visão geral / Estatísticas */}
+        <div className="mt-5 flex gap-1 rounded-lg bg-panel p-1">
+          {(
+            [
+              ["overview", "Visão geral"],
+              ["stats", "Estatísticas"],
+            ] as const
+          ).map(([k, lbl]) => (
+            <button
+              key={k}
+              onClick={() => setTab(k)}
+              className={`flex-1 rounded-md px-3 py-1.5 text-sm font-bold transition ${
+                tab === k ? "bg-gold text-[#1a1a1e]" : "text-faint hover:text-white"
+              }`}
+            >
+              {lbl}
+            </button>
+          ))}
+        </div>
+
+        {tab === "overview" && (
+          <>
+        {/* Estatísticas + proporção V/E/D */}
+        <div className="mt-4 grid grid-cols-4 gap-2">
           {statCards.map((s) => (
             <div key={s.label} className="rounded-md bg-panel py-3 text-center">
               <div className="text-2xl font-extrabold" style={{ color: s.color }}>
@@ -192,12 +226,14 @@ export default function TeamDetailModal({
           <ProportionBar
             segments={[
               { value: team.wins, color: ACCENT.win, title: "Vitórias" },
+              { value: team.draws, color: ACCENT.draw, title: "Empates" },
               { value: team.losses, color: ACCENT.loss, title: "Derrotas" },
             ]}
           />
           <div className="mt-1 flex justify-between text-[10px] font-semibold uppercase tracking-wide">
-            <span className="text-win">Vitórias</span>
-            <span className="text-loss">Derrotas</span>
+            <span className="text-win">{team.wins} V</span>
+            <span className="text-draw">{team.draws} E</span>
+            <span className="text-loss">{team.losses} D</span>
           </div>
         </div>
 
@@ -271,6 +307,69 @@ export default function TeamDetailModal({
               Já passaram pelo time ({former.length}) · por posição
             </h3>
             <PositionGroups members={former} />
+          </section>
+        )}
+          </>
+        )}
+
+        {tab === "stats" && (
+          <section className="mt-5">
+            <h3 className="mb-2.5 flex items-center gap-1.5 text-xs font-bold uppercase tracking-wide text-faint">
+              <Icon name="futbol" className="text-gold" />
+              Estatísticas dos jogadores · todas as partidas
+            </h3>
+            {team.playerStats.length === 0 ? (
+              <p className="rounded-md bg-panel p-3 text-sm text-faint">
+                Nenhuma estatística registrada ainda.
+              </p>
+            ) : (
+              <div className="overflow-hidden rounded-md bg-panel">
+                <table className="w-full text-sm">
+                  <thead>
+                    <tr className="text-[11px] uppercase tracking-wide text-faint">
+                      <th className="px-3 py-2 text-left font-semibold">Jogador</th>
+                      <th className="px-2 py-2 text-center font-semibold" title="Gols">
+                        ⚽
+                      </th>
+                      <th className="px-2 py-2 text-center font-semibold" title="Assistências">
+                        👟
+                      </th>
+                      <th className="px-2 py-2 text-center font-semibold" title="Cartões amarelos">
+                        🟨
+                      </th>
+                      <th className="px-2 py-2 text-center font-semibold" title="Cartões vermelhos">
+                        🟥
+                      </th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {team.playerStats.map((p) => (
+                      <tr key={p.name} className="border-t border-white/5">
+                        <td className="px-3 py-1.5">
+                          <span className="flex items-center gap-2">
+                            <span className="flex h-7 w-6 shrink-0 items-end justify-center overflow-hidden rounded bg-base">
+                              {/* eslint-disable-next-line @next/next/no-img-element */}
+                              <img
+                                src={avatarUrl(p.nick || p.name)}
+                                alt=""
+                                className="h-[34px] w-6 object-contain"
+                              />
+                            </span>
+                            <span className="font-medium">{p.name}</span>
+                          </span>
+                        </td>
+                        <td className="px-2 py-1.5 text-center font-bold tabular-nums text-gold">
+                          {p.goals || "—"}
+                        </td>
+                        <td className="px-2 py-1.5 text-center tabular-nums">{p.assists || "—"}</td>
+                        <td className="px-2 py-1.5 text-center tabular-nums">{p.yellow || "—"}</td>
+                        <td className="px-2 py-1.5 text-center tabular-nums">{p.red || "—"}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            )}
           </section>
         )}
       </div>

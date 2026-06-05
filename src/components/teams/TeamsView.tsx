@@ -91,12 +91,14 @@ export default function TeamsView({
                   <ProportionBar
                     segments={[
                       { value: t.wins, color: ACCENT.win, title: "Vitórias" },
+                      { value: t.draws, color: ACCENT.draw, title: "Empates" },
                       { value: t.losses, color: ACCENT.loss, title: "Derrotas" },
                     ]}
                   />
                   <div className="mt-1 flex justify-between text-[10px] font-semibold uppercase tracking-wide">
-                    <span className="text-win">Vitórias</span>
-                    <span className="text-loss">Derrotas</span>
+                    <span className="text-win">{t.wins} V</span>
+                    <span className="text-draw">{t.draws} E</span>
+                    <span className="text-loss">{t.losses} D</span>
                   </div>
 
                   {/* Grade de blocos de estatísticas */}

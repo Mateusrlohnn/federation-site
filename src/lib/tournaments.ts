@@ -53,13 +53,35 @@ export type MatchEvent = {
   outPlayerId?: string | null;
 };
 
-/** Escalação de um jogador numa partida: posição, titularidade e nota. */
+/** Conceitos de avaliação do jogador (do pior ao melhor). */
+export type Grade = "C" | "B" | "A" | "A+" | "S" | "S+";
+export const GRADES: Grade[] = ["C", "B", "A", "A+", "S", "S+"];
+
+/** Classes de cor (bg + texto) de um conceito — usado no selo da nota. */
+export function gradeClass(g: Grade): string {
+  switch (g) {
+    case "C":
+      return "bg-loss/20 text-loss";
+    case "B":
+      return "bg-white/10 text-faint";
+    case "A":
+      return "bg-win/20 text-win";
+    case "A+":
+      return "bg-win/30 text-win";
+    case "S":
+      return "bg-gold/20 text-gold";
+    case "S+":
+      return "bg-gold/40 text-gold";
+  }
+}
+
+/** Escalação de um jogador numa partida: posição, titularidade e nota (conceito). */
 export type MatchLineup = {
   playerId: string;
   teamId: string | null;
   position: Position | null;
   isStarter: boolean;
-  rating: number | null;
+  rating: Grade | null;
 };
 
 export type Match = {
@@ -225,7 +247,7 @@ export function matchFromRow(r: Record<string, unknown>): Match {
       teamId: (l.team_id as string) ?? null,
       position: asPosition(l.position),
       isStarter: l.is_starter !== false,
-      rating: l.rating == null ? null : Number(l.rating),
+      rating: (l.rating as Grade) ?? null,
     })),
   };
 }

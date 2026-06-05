@@ -36,7 +36,7 @@ export default function Home() {
                     <span className="bg-yellow-500 text-yellow-800 w-max font-bold py-1 px-2 text-sm rounded">
                       hubbe.biz
                     </span>
-                    <span className="text-sm">1Q football no Hubbe</span>
+                    <span className="text-sm">Rebug Football no Hubbe</span>
                   </div>
                 </div>
 
@@ -71,7 +71,7 @@ export default function Home() {
 
                 <p className="max-w-[336px] mt-[-20px] text-xs text-[#8d8d8daa]">
                   A Federação Rebug é organizada por Levi, LebronGames e Pkzera, desenvolvendo
-                  campeonatos de alto nível e entregando inovação na modalidade 1q do Hubbe.
+                  campeonatos de alto nível e entregando inovação no Rebug Football do Hubbe.
                 </p>
 
                 <div className="w-full flex flex-col gap-1 items-center">

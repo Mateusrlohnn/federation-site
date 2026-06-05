@@ -11,7 +11,7 @@
 -- (ou entrou por substituição) e a nota recebida no pós-jogo.
 --   position    -> posição naquela partida (pode diferir da posição cadastrada)
 --   is_starter  -> true: titular | false: entrou por substituição
---   rating      -> nota 0–10 com um decimal (definida após o jogo)
+--   rating      -> conceito da avaliação: C, B, A, A+, S, S+ (definido após o jogo)
 -- Sem linhas para uma partida = súmula cai no comportamento antigo (roster).
 create table if not exists public.match_lineups (
   id         uuid primary key default gen_random_uuid(),
@@ -20,10 +20,24 @@ create table if not exists public.match_lineups (
   team_id    uuid references public.teams(id) on delete set null,
   position   text check (position in ('GK', 'ZAG', 'MID', 'ATK')),
   is_starter boolean not null default true,
-  rating     numeric(3, 1) check (rating >= 0 and rating <= 10),
+  rating     text check (rating in ('C', 'B', 'A', 'A+', 'S', 'S+')),
   created_at timestamptz not null default now(),
   unique (match_id, player_id)
 );
+
+-- Migra bases antigas: se rating ainda for numérico (0–10), troca por conceito text.
+do $$
+begin
+  if exists (
+    select 1 from information_schema.columns
+    where table_schema = 'public' and table_name = 'match_lineups'
+      and column_name = 'rating' and data_type = 'numeric'
+  ) then
+    alter table public.match_lineups drop column rating;
+    alter table public.match_lineups
+      add column rating text check (rating in ('C', 'B', 'A', 'A+', 'S', 'S+'));
+  end if;
+end $$;
 
 alter table public.match_lineups enable row level security;
 drop policy if exists "match_lineups_read" on public.match_lineups;

@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 import Icon from "@/components/ui/Icon";
 import { avatarUrl } from "@/lib/hof";
+import { gradeClass, type Grade } from "@/lib/tournaments";
 
 /**
  * Súmula completa de uma partida — botão + modal somente de apresentação.
@@ -20,19 +21,12 @@ export type SheetPlayer = {
   assists: number;
   yellow: number;
   red: number;
-  rating: number | null;
+  rating: Grade | null;
   subbedIn: boolean; // entrou no jogo (substituição)
   subbedOut: boolean; // saiu do jogo (substituição)
   subInMinute: number | null;
   subOutMinute: number | null;
 };
-
-/** Classe de cor da nota: <5 ruim, 5–7 neutra, >7 boa. */
-function ratingClass(r: number) {
-  if (r < 5) return "bg-loss/20 text-loss";
-  if (r <= 7) return "bg-white/10 text-faint";
-  return "bg-win/20 text-win";
-}
 export type SheetSide = { name: string; logo: string; score: number; lineup: SheetPlayer[] };
 export type SheetData = {
   home: SheetSide;
@@ -136,11 +130,11 @@ function SheetRow({ p }: { p: SheetPlayer }) {
       {p.rating != null && (
         <span
           title="Nota"
-          className={`ml-1 inline-flex min-w-[2.1rem] shrink-0 items-center justify-center rounded-md px-1.5 py-0.5 text-xs font-extrabold tabular-nums ${ratingClass(
+          className={`ml-1 inline-flex min-w-[2.1rem] shrink-0 items-center justify-center rounded-md px-1.5 py-0.5 text-xs font-extrabold ${gradeClass(
             p.rating,
           )}`}
         >
-          {p.rating.toFixed(1)}
+          {p.rating}
         </span>
       )}
     </div>

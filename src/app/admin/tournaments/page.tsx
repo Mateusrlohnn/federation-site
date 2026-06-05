@@ -13,10 +13,13 @@ import {
   matchFromRow,
   computeTopScorers,
   matchScore,
+  gradeClass,
+  GRADES,
   type Tournament,
   type Match,
   type MatchEventType,
   type MatchLineup,
+  type Grade,
   type TournamentMessage,
 } from "@/lib/tournaments";
 import { POSITIONS, type Position } from "@/lib/teams";
@@ -322,7 +325,7 @@ export default function AdminTournamentsPage() {
     }));
   }
 
-  function setRating(pid: string, rating: number | null) {
+  function setRating(pid: string, rating: Grade | null) {
     setNewMatch((m) => ({
       ...m,
       lineups: m.lineups.map((l) => (l.playerId === pid ? { ...l, rating } : l)),
@@ -1118,7 +1121,7 @@ export default function AdminTournamentsPage() {
         {/* notas dos jogadores (só em súmula encerrada) */}
         {!liveMode && (
           <div className="flex flex-col gap-2 rounded-md bg-panel p-2">
-            <span className="text-[11px] font-semibold">📝 Notas dos jogadores (0–10)</span>
+            <span className="text-[11px] font-semibold">📝 Notas dos jogadores (C · B · A · A+ · S · S+)</span>
             {newMatch.lineups.length === 0 ? (
               <span className="text-[11px] text-faint">
                 Escale os jogadores na seção acima para lançar notas.
@@ -1126,7 +1129,7 @@ export default function AdminTournamentsPage() {
             ) : (
               <div className="grid gap-3 sm:grid-cols-2">
                 {[newMatch.homeTeamId, newMatch.awayTeamId].map((tid) => (
-                  <div key={tid} className="flex flex-col gap-1">
+                  <div key={tid} className="flex flex-col gap-1.5">
                     <span className="text-[11px] font-bold text-faint">{teamName(tid)}</span>
                     {newMatch.lineups
                       .filter((l) => l.teamId === tid)
@@ -1135,23 +1138,24 @@ export default function AdminTournamentsPage() {
                         <div key={l.playerId} className="flex items-center gap-2 text-[11px]">
                           <span className="flex-1 truncate">
                             {playerName(l.playerId)}
-                            {!l.isStarter && <span className="text-draw"> (entrou)</span>}
+                            {!l.isStarter && <span className="text-draw"> ↑</span>}
                           </span>
-                          <input
-                            type="number"
-                            min={0}
-                            max={10}
-                            step={0.1}
-                            placeholder="—"
-                            className={`${inputC} w-16 py-1`}
+                          <select
                             value={l.rating ?? ""}
                             onChange={(e) =>
-                              setRating(
-                                l.playerId,
-                                e.target.value === "" ? null : Number(e.target.value),
-                              )
+                              setRating(l.playerId, (e.target.value || null) as Grade | null)
                             }
-                          />
+                            className={`${inputC} w-24 shrink-0 py-1 text-center font-extrabold ${
+                              l.rating ? gradeClass(l.rating) : ""
+                            }`}
+                          >
+                            <option value="">— nota —</option>
+                            {GRADES.map((g) => (
+                              <option key={g} value={g}>
+                                {g}
+                              </option>
+                            ))}
+                          </select>
                         </div>
                       ))}
                   </div>

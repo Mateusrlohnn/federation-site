@@ -14,6 +14,7 @@ import {
   matchLineupFor,
   type Match,
   type PlayerLine,
+  type Grade,
 } from "@/lib/tournaments";
 import { statusStyle, type TourTeam } from "@/components/tournaments/shared";
 import MatchSheet, { type SheetData, type SheetSide } from "@/components/tournaments/MatchSheet";
@@ -313,7 +314,7 @@ export default function TournamentScreen({ data }: { data: ScreenData }) {
       const ids: string[] = [];
       const seen = new Set<string>();
       const posOf = new Map<string, Position | null>();
-      const ratingOf = new Map<string, number | null>();
+      const ratingOf = new Map<string, Grade | null>();
       const add = (pid: string) => {
         if (seen.has(pid)) return;
         seen.add(pid);
