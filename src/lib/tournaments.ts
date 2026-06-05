@@ -1,4 +1,5 @@
 import type { TournamentFormat } from "@/lib/formats";
+import { asPosition, type Position } from "@/lib/teams";
 
 export type TournamentStatus = "Em andamento" | "Finalizado" | "Em breve";
 
@@ -24,19 +25,23 @@ export type Tournament = {
 
 export type MatchEventType =
   | "goal"
+  | "own_goal"
   | "penalty_goal"
   | "penalty_miss"
   | "assist"
   | "yellow_card"
-  | "red_card";
+  | "red_card"
+  | "substitution";
 
 export const MATCH_EVENT_TYPES: { type: MatchEventType; label: string; emoji: string }[] = [
   { type: "goal", label: "Gol", emoji: "⚽" },
+  { type: "own_goal", label: "Gol contra", emoji: "🥅" },
   { type: "penalty_goal", label: "Pênalti convertido", emoji: "⚽" },
   { type: "penalty_miss", label: "Pênalti perdido", emoji: "🔴" },
   { type: "assist", label: "Assistência", emoji: "👟" },
   { type: "yellow_card", label: "Cartão amarelo", emoji: "🟨" },
   { type: "red_card", label: "Cartão vermelho", emoji: "🟥" },
+  { type: "substitution", label: "Substituição", emoji: "🔄" },
 ];
 
 export type MatchEvent = {
@@ -44,6 +49,17 @@ export type MatchEvent = {
   teamId: string | null;
   type: MatchEventType;
   minute: number | null;
+  // substituição: jogador que SAI (playerId guarda quem entra)
+  outPlayerId?: string | null;
+};
+
+/** Escalação de um jogador numa partida: posição, titularidade e nota. */
+export type MatchLineup = {
+  playerId: string;
+  teamId: string | null;
+  position: Position | null;
+  isStarter: boolean;
+  rating: number | null;
 };
 
 export type Match = {
@@ -58,29 +74,60 @@ export type Match = {
   playedAt: string | null;
   notes: string;
   events: MatchEvent[];
+  lineups: MatchLineup[];
 };
 
-/** Um gol conta na artilharia? (gol normal ou pênalti convertido) */
+/** Um gol conta na artilharia? (gol normal ou pênalti convertido — gol contra NÃO) */
 export function isGoal(type: MatchEventType) {
   return type === "goal" || type === "penalty_goal";
 }
 
-/** Nº de gols de um time numa partida (placar automático). */
-export function teamGoals(events: MatchEvent[], teamId: string | null): number {
-  if (!teamId) return 0;
-  return events.filter((e) => isGoal(e.type) && e.teamId === teamId).length;
+/**
+ * Placar automático derivado dos eventos.
+ * Gols normais/pênaltis contam para o time do autor; o gol contra (own_goal)
+ * conta para o time ADVERSÁRIO ao do autor.
+ */
+export function matchScore(
+  events: MatchEvent[],
+  homeTeamId: string | null,
+  awayTeamId: string | null,
+): { home: number; away: number } {
+  let home = 0;
+  let away = 0;
+  for (const e of events) {
+    if (e.type === "own_goal") {
+      if (e.teamId === homeTeamId) away++;
+      else if (e.teamId === awayTeamId) home++;
+    } else if (isGoal(e.type)) {
+      if (e.teamId === homeTeamId) home++;
+      else if (e.teamId === awayTeamId) away++;
+    }
+  }
+  return { home, away };
 }
 
-/** Lista de goleadores de um time (para exibir "Aduzn 4'" embaixo do time). */
+/**
+ * Goleadores exibidos sob um time (ex.: "Aduzn 4'"): os gols dos próprios
+ * jogadores + os gols contra marcados pelo adversário (marcados como `ownGoal`).
+ */
 export function teamScorers(
   events: MatchEvent[],
   teamId: string | null,
-): { playerId: string; minute: number | null; penalty: boolean }[] {
+  opponentId: string | null = null,
+): { playerId: string; minute: number | null; penalty: boolean; ownGoal: boolean }[] {
   if (!teamId) return [];
-  return events
+  const own = events
     .filter((e) => isGoal(e.type) && e.teamId === teamId)
-    .map((e) => ({ playerId: e.playerId, minute: e.minute, penalty: e.type === "penalty_goal" }))
-    .sort((a, b) => (a.minute ?? 9999) - (b.minute ?? 9999));
+    .map((e) => ({
+      playerId: e.playerId,
+      minute: e.minute,
+      penalty: e.type === "penalty_goal",
+      ownGoal: false,
+    }));
+  const against = events
+    .filter((e) => e.type === "own_goal" && e.teamId === opponentId)
+    .map((e) => ({ playerId: e.playerId, minute: e.minute, penalty: false, ownGoal: true }));
+  return [...own, ...against].sort((a, b) => (a.minute ?? 9999) - (b.minute ?? 9999));
 }
 
 export type TournamentMessage = { id: string; body: string; createdAt: string };
@@ -112,6 +159,7 @@ export function emptyMatch(): Match {
     playedAt: null,
     notes: "",
     events: [],
+    lineups: [],
   };
 }
 
@@ -136,7 +184,23 @@ export function tournamentFromRow(r: Record<string, unknown>): Tournament {
 export function matchFromRow(r: Record<string, unknown>): Match {
   const events =
     (r.match_events as
-      | { player_id: string; team_id?: unknown; type: string; minute?: unknown }[]
+      | {
+          player_id: string;
+          team_id?: unknown;
+          type: string;
+          minute?: unknown;
+          secondary_player_id?: unknown;
+        }[]
+      | undefined) ?? [];
+  const lineups =
+    (r.match_lineups as
+      | {
+          player_id: string;
+          team_id?: unknown;
+          position?: unknown;
+          is_starter?: unknown;
+          rating?: unknown;
+        }[]
       | undefined) ?? [];
   return {
     id: r.id as string,
@@ -154,8 +218,22 @@ export function matchFromRow(r: Record<string, unknown>): Match {
       teamId: (e.team_id as string) ?? null,
       type: e.type as MatchEventType,
       minute: e.minute == null ? null : Number(e.minute),
+      outPlayerId: (e.secondary_player_id as string) ?? null,
+    })),
+    lineups: lineups.map((l) => ({
+      playerId: l.player_id,
+      teamId: (l.team_id as string) ?? null,
+      position: asPosition(l.position),
+      isStarter: l.is_starter !== false,
+      rating: l.rating == null ? null : Number(l.rating),
     })),
   };
+}
+
+/** Escalação de um time numa partida (vazio = sem escalação registrada). */
+export function matchLineupFor(m: Match, teamId: string | null): MatchLineup[] {
+  if (!teamId) return [];
+  return m.lineups.filter((l) => l.teamId === teamId);
 }
 
 /** Soma os gols por jogador (gol normal + pênalti convertido) — artilharia. */
@@ -199,6 +277,7 @@ export type PlayerLine = {
   goals: number;
   penaltyGoals: number;
   penaltyMisses: number;
+  ownGoals: number;
   assists: number;
   yellow: number;
   red: number;
@@ -224,12 +303,14 @@ export function playerLines(events: MatchEvent[]): Map<string, PlayerLine> {
         goals: 0,
         penaltyGoals: 0,
         penaltyMisses: 0,
+        ownGoals: 0,
         assists: 0,
         yellow: 0,
         red: 0,
       };
     if (e.type === "goal") l.goals++;
     else if (e.type === "penalty_goal") l.penaltyGoals++;
+    else if (e.type === "own_goal") l.ownGoals++;
     else if (e.type === "penalty_miss") l.penaltyMisses++;
     else if (e.type === "assist") l.assists++;
     else if (e.type === "yellow_card") l.yellow++;

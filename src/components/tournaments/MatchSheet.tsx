@@ -15,11 +15,24 @@ export type SheetPlayer = {
   posSigla: string | null;
   goals: number;
   goalMinutes: (number | null)[];
+  ownGoals: number;
   penaltyMisses: number;
   assists: number;
   yellow: number;
   red: number;
+  rating: number | null;
+  subbedIn: boolean; // entrou no jogo (substituição)
+  subbedOut: boolean; // saiu do jogo (substituição)
+  subInMinute: number | null;
+  subOutMinute: number | null;
 };
+
+/** Classe de cor da nota: <5 ruim, 5–7 neutra, >7 boa. */
+function ratingClass(r: number) {
+  if (r < 5) return "bg-loss/20 text-loss";
+  if (r <= 7) return "bg-white/10 text-faint";
+  return "bg-win/20 text-win";
+}
 export type SheetSide = { name: string; logo: string; score: number; lineup: SheetPlayer[] };
 export type SheetData = {
   home: SheetSide;
@@ -49,12 +62,36 @@ function PlayerAvatar({ name, nick, size = 34 }: { name: string; nick?: string; 
 }
 
 function SheetRow({ p }: { p: SheetPlayer }) {
-  const hasEvents = p.goals || p.assists || p.yellow || p.red || p.penaltyMisses;
+  const hasEvents =
+    p.goals ||
+    p.assists ||
+    p.yellow ||
+    p.red ||
+    p.penaltyMisses ||
+    p.ownGoals ||
+    p.subbedIn ||
+    p.subbedOut;
   return (
     <div className="flex items-center gap-2 rounded-lg px-2 py-1.5 odd:bg-white/[0.02]">
       <PlayerAvatar name={p.name} nick={p.nick} />
       <span className="min-w-0 flex-1 truncate text-sm font-medium">{p.name}</span>
       <span className="flex flex-wrap items-center justify-end gap-1.5 text-sm">
+        {p.subbedIn && (
+          <span title="Entrou (substituição)" className="inline-flex items-center gap-0.5 text-win">
+            🔺
+            {p.subInMinute != null && (
+              <span className="font-mono text-[10px]">{p.subInMinute}&apos;</span>
+            )}
+          </span>
+        )}
+        {p.subbedOut && (
+          <span title="Saiu (substituição)" className="inline-flex items-center gap-0.5 text-loss">
+            🔻
+            {p.subOutMinute != null && (
+              <span className="font-mono text-[10px]">{p.subOutMinute}&apos;</span>
+            )}
+          </span>
+        )}
         {p.goals > 0 && (
           <span title="Gols" className="inline-flex items-center gap-0.5">
             <span>⚽</span>
@@ -74,6 +111,11 @@ function SheetRow({ p }: { p: SheetPlayer }) {
             👟{p.assists > 1 && <span className="text-xs font-bold">{p.assists}</span>}
           </span>
         )}
+        {p.ownGoals > 0 && (
+          <span title="Gols contra" className="inline-flex items-center gap-0.5">
+            🥅{p.ownGoals > 1 && <span className="text-xs font-bold">{p.ownGoals}</span>}
+          </span>
+        )}
         {p.penaltyMisses > 0 && (
           <span title="Pênaltis perdidos" className="inline-flex items-center gap-0.5">
             🔴{p.penaltyMisses > 1 && <span className="text-xs font-bold">{p.penaltyMisses}</span>}
@@ -91,6 +133,16 @@ function SheetRow({ p }: { p: SheetPlayer }) {
         )}
         {!hasEvents && <span className="text-xs text-faint">—</span>}
       </span>
+      {p.rating != null && (
+        <span
+          title="Nota"
+          className={`ml-1 inline-flex min-w-[2.1rem] shrink-0 items-center justify-center rounded-md px-1.5 py-0.5 text-xs font-extrabold tabular-nums ${ratingClass(
+            p.rating,
+          )}`}
+        >
+          {p.rating.toFixed(1)}
+        </span>
+      )}
     </div>
   );
 }

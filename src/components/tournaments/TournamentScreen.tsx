@@ -11,6 +11,7 @@ import {
   teamScorers,
   teamResult,
   isGoal,
+  matchLineupFor,
   type Match,
   type PlayerLine,
 } from "@/lib/tournaments";
@@ -58,7 +59,7 @@ const MEDALS = ["#ffb300", "#c7ccd1", "#cd7f32"]; // ouro, prata, bronze
 function ScorerList({
   items,
 }: {
-  items: { name: string; nick?: string; minute: number | null; penalty: boolean }[];
+  items: { name: string; nick?: string; minute: number | null; penalty: boolean; ownGoal: boolean }[];
 }) {
   if (!items.length) return null;
   return (
@@ -66,8 +67,9 @@ function ScorerList({
       {items.map((s, i) => (
         <span key={i} className="flex items-center gap-1 text-xs">
           <PlayerAvatar name={s.name} nick={s.nick} size={20} />
-          <span className="text-sm leading-none">⚽</span>
+          <span className="text-sm leading-none">{s.ownGoal ? "🥅" : "⚽"}</span>
           {s.penalty && <span className="text-[9px] font-bold text-faint">P</span>}
+          {s.ownGoal && <span className="text-[9px] font-bold text-loss">(contra)</span>}
           <span className="font-semibold">{s.name}</span>
           {s.minute != null && <span className="font-mono text-faint">{s.minute}&apos;</span>}
         </span>
@@ -79,6 +81,7 @@ function ScorerList({
 /** Selos "extras" de um jogador (sem gols): pênalti perdido, assist, cartões. */
 function extraBadges(l: PlayerLine) {
   const out: { emoji: string; n: number; title: string }[] = [];
+  if (l.ownGoals) out.push({ emoji: "🥅", n: l.ownGoals, title: "Gols contra" });
   if (l.penaltyMisses) out.push({ emoji: "🔴", n: l.penaltyMisses, title: "Pênaltis perdidos" });
   if (l.assists) out.push({ emoji: "👟", n: l.assists, title: "Assistências" });
   if (l.yellow) out.push({ emoji: "🟨", n: l.yellow, title: "Cartões amarelos" });
@@ -278,13 +281,16 @@ export default function TournamentScreen({ data }: { data: ScreenData }) {
   const logo = (id: string | null) => (id ? data.teamLogos[id] ?? "" : "");
   const player = (id: string) => data.playerNames[id] ?? id;
   const nickOf = (id: string) => data.playerNicks?.[id] || data.playerNames[id] || id;
-  const scorersOf = (m: Match, teamId: string | null) =>
-    teamScorers(m.events, teamId).map((s) => ({
+  const scorersOf = (m: Match, teamId: string | null) => {
+    const opponentId = teamId === m.homeTeamId ? m.awayTeamId : m.homeTeamId;
+    return teamScorers(m.events, teamId, opponentId).map((s) => ({
       name: player(s.playerId),
       nick: nickOf(s.playerId),
       minute: s.minute,
       penalty: s.penalty,
+      ownGoal: s.ownGoal,
     }));
+  };
 
   const siglaFor = (pos: Position | null) =>
     pos ? POSITIONS.find((p) => p.key === pos)?.sigla ?? null : null;
@@ -293,23 +299,51 @@ export default function TournamentScreen({ data }: { data: ScreenData }) {
   // Monta a súmula completa: elenco em campo por posição + eventos de cada jogador.
   function buildSheet(m: Match): SheetData {
     const lines = playerLines(m.events);
+    // minutos de entrada/saída por jogador (substituições)
+    const subIn = new Map<string, number | null>();
+    const subOut = new Map<string, number | null>();
+    for (const e of m.events)
+      if (e.type === "substitution") {
+        subIn.set(e.playerId, e.minute);
+        if (e.outPlayerId) subOut.set(e.outPlayerId, e.minute);
+      }
     const side = (teamId: string | null, score: number): SheetSide => {
+      const lineupRows = matchLineupFor(m, teamId);
       const roster = teamId ? data.teamRosters[teamId] ?? [] : [];
       const ids: string[] = [];
       const seen = new Set<string>();
-      for (const r of roster) if (r.active && !seen.has(r.playerId)) {
-        ids.push(r.playerId);
-        seen.add(r.playerId);
+      const posOf = new Map<string, Position | null>();
+      const ratingOf = new Map<string, number | null>();
+      const add = (pid: string) => {
+        if (seen.has(pid)) return;
+        seen.add(pid);
+        ids.push(pid);
+      };
+      if (lineupRows.length) {
+        // escalação registrada nesta partida: só quem foi escalado
+        for (const l of lineupRows) {
+          add(l.playerId);
+          posOf.set(l.playerId, l.position);
+          ratingOf.set(l.playerId, l.rating);
+        }
+      } else {
+        // fallback (jogos antigos sem escalação): elenco ativo do time
+        for (const r of roster)
+          if (r.active) {
+            add(r.playerId);
+            posOf.set(r.playerId, r.position ?? data.playerPositions[r.playerId] ?? null);
+          }
       }
-      // jogadores com evento desse time que não estão no elenco ativo
+      // garante quem tem evento desse time (inclui quem saiu numa substituição)
       for (const e of m.events)
-        if (e.teamId === teamId && !seen.has(e.playerId)) {
-          ids.push(e.playerId);
-          seen.add(e.playerId);
+        if (e.teamId === teamId) {
+          add(e.playerId);
+          if (e.type === "substitution" && e.outPlayerId) add(e.outPlayerId);
         }
       const lineup = ids.map((pid) => {
-        const rosterEntry = roster.find((r) => r.playerId === pid);
-        const pos = rosterEntry?.position ?? data.playerPositions[pid] ?? null;
+        const pos = posOf.has(pid)
+          ? posOf.get(pid) ?? null
+          : roster.find((r) => r.playerId === pid)?.position ?? data.playerPositions[pid] ?? null;
         const l = lines.get(pid);
         const goalMinutes = m.events
           .filter((e) => e.playerId === pid && isGoal(e.type))
@@ -320,10 +354,16 @@ export default function TournamentScreen({ data }: { data: ScreenData }) {
           posSigla: siglaFor(pos),
           goals: (l?.goals ?? 0) + (l?.penaltyGoals ?? 0),
           goalMinutes,
+          ownGoals: l?.ownGoals ?? 0,
           penaltyMisses: l?.penaltyMisses ?? 0,
           assists: l?.assists ?? 0,
           yellow: l?.yellow ?? 0,
           red: l?.red ?? 0,
+          rating: ratingOf.get(pid) ?? null,
+          subbedIn: subIn.has(pid),
+          subbedOut: subOut.has(pid),
+          subInMinute: subIn.get(pid) ?? null,
+          subOutMinute: subOut.get(pid) ?? null,
         };
       });
       lineup.sort((a, b) => {

@@ -12,12 +12,15 @@ import {
   tournamentFromRow,
   matchFromRow,
   computeTopScorers,
-  teamGoals,
+  matchScore,
   type Tournament,
   type Match,
   type MatchEventType,
+  type MatchLineup,
   type TournamentMessage,
 } from "@/lib/tournaments";
+import { POSITIONS, type Position } from "@/lib/teams";
+import { avatarUrl } from "@/lib/hof";
 
 import {
   TOURNAMENT_FORMATS,
@@ -43,7 +46,12 @@ export default function AdminTournamentsPage() {
   const [list, setList] = useState<Tournament[]>([]);
   const [allTeams, setAllTeams] = useState<Lite[]>([]);
   const [allPlayers, setAllPlayers] = useState<Lite[]>([]);
-  const [rosters, setRosters] = useState<Record<string, string[]>>({}); // teamId -> playerIds
+  const [playerPos, setPlayerPos] = useState<Record<string, Position | null>>({}); // posição natural
+  const [playerNick, setPlayerNick] = useState<Record<string, string>>({}); // nick p/ avatar
+  // teamId -> jogadores do elenco (com a posição no time)
+  const [rosters, setRosters] = useState<Record<string, { playerId: string; position: Position | null }[]>>(
+    {},
+  );
   const [draft, setDraft] = useState<Tournament | null>(null);
   const [matches, setMatches] = useState<Match[]>([]);
   const [messages, setMessages] = useState<TournamentMessage[]>([]);
@@ -55,6 +63,8 @@ export default function AdminTournamentsPage() {
   const [evPlayer, setEvPlayer] = useState("");
   const [evType, setEvType] = useState<MatchEventType>("goal");
   const [evMinute, setEvMinute] = useState("");
+  const [evOut, setEvOut] = useState(""); // substituição: jogador que sai
+  const [evIn, setEvIn] = useState(""); // substituição: jogador que entra
   const [newMessage, setNewMessage] = useState("");
   const [busy, setBusy] = useState(false);
   const [msg, setMsg] = useState("");
@@ -76,16 +86,32 @@ export default function AdminTournamentsPage() {
         .select("*, tournament_teams(team_id), tournament_players(player_id)")
         .order("created_at", { ascending: false }),
       supabase.from("teams").select("id, name").order("name"),
-      supabase.from("players").select("id, name").order("name"),
-      supabase.from("team_players").select("team_id, player_id"),
+      supabase.from("players").select("id, name, nick, position").order("name"),
+      supabase.from("team_players").select("team_id, player_id, position"),
     ]);
     if (!t.error && t.data) setList(t.data.map(tournamentFromRow));
     if (!te.error && te.data) setAllTeams(te.data as Lite[]);
-    if (!pl.error && pl.data) setAllPlayers(pl.data as Lite[]);
+    if (!pl.error && pl.data) {
+      const players = pl.data as {
+        id: string;
+        name: string;
+        nick: string | null;
+        position: Position | null;
+      }[];
+      setAllPlayers(players.map((p) => ({ id: p.id, name: p.name })));
+      const pos: Record<string, Position | null> = {};
+      const nick: Record<string, string> = {};
+      players.forEach((p) => {
+        pos[p.id] = p.position ?? null;
+        nick[p.id] = p.nick?.trim() || p.name;
+      });
+      setPlayerPos(pos);
+      setPlayerNick(nick);
+    }
     if (!tp.error && tp.data) {
-      const map: Record<string, string[]> = {};
-      (tp.data as { team_id: string; player_id: string }[]).forEach((r) => {
-        (map[r.team_id] ??= []).push(r.player_id);
+      const map: Record<string, { playerId: string; position: Position | null }[]> = {};
+      (tp.data as { team_id: string; player_id: string; position: Position | null }[]).forEach((r) => {
+        (map[r.team_id] ??= []).push({ playerId: r.player_id, position: r.position ?? null });
       });
       setRosters(map);
     }
@@ -96,7 +122,9 @@ export default function AdminTournamentsPage() {
       const [m, ms] = await Promise.all([
         supabase
           .from("matches")
-          .select("*, match_events(player_id, team_id, type, minute)")
+          .select(
+            "*, match_events(player_id, team_id, type, minute, secondary_player_id), match_lineups(player_id, team_id, position, is_starter, rating)",
+          )
           .eq("tournament_id", tid)
           .order("played_at", { ascending: false, nullsFirst: false }),
         supabase
@@ -143,6 +171,8 @@ export default function AdminTournamentsPage() {
     setEvPlayer("");
     setEvType("goal");
     setEvMinute("");
+    setEvOut("");
+    setEvIn("");
   }
 
   function startSumula() {
@@ -249,7 +279,7 @@ export default function AdminTournamentsPage() {
     const seen = new Set<string>();
     for (const teamId of [newMatch.homeTeamId, newMatch.awayTeamId]) {
       if (!teamId) continue;
-      for (const pid of rosters[teamId] ?? []) {
+      for (const { playerId: pid } of rosters[teamId] ?? []) {
         if (seen.has(pid)) continue;
         seen.add(pid);
         out.push({ id: pid, name: playerName(pid), teamId });
@@ -258,7 +288,81 @@ export default function AdminTournamentsPage() {
     return out.sort((a, b) => a.name.localeCompare(b.name));
   }
 
+  // posição padrão de um jogador num time: a do elenco, senão a natural.
+  function defaultPos(teamId: string | null, pid: string): Position | null {
+    if (teamId) {
+      const r = (rosters[teamId] ?? []).find((x) => x.playerId === pid);
+      if (r?.position) return r.position;
+    }
+    return playerPos[pid] ?? null;
+  }
+
+  const lineupOf = (pid: string) => newMatch.lineups.find((l) => l.playerId === pid);
+
+  // marca/desmarca um jogador como escalado (titular) num time.
+  function toggleLineup(pid: string, teamId: string | null) {
+    setNewMatch((m) => {
+      const exists = m.lineups.some((l) => l.playerId === pid);
+      if (exists) return { ...m, lineups: m.lineups.filter((l) => l.playerId !== pid) };
+      const entry: MatchLineup = {
+        playerId: pid,
+        teamId,
+        position: defaultPos(teamId, pid),
+        isStarter: true,
+        rating: null,
+      };
+      return { ...m, lineups: [...m.lineups, entry] };
+    });
+  }
+
+  function setLineupPos(pid: string, position: Position | null) {
+    setNewMatch((m) => ({
+      ...m,
+      lineups: m.lineups.map((l) => (l.playerId === pid ? { ...l, position } : l)),
+    }));
+  }
+
+  function setRating(pid: string, rating: number | null) {
+    setNewMatch((m) => ({
+      ...m,
+      lineups: m.lineups.map((l) => (l.playerId === pid ? { ...l, rating } : l)),
+    }));
+  }
+
   function addEvent() {
+    // substituição: dois jogadores (sai/entra); quem entra herda a posição
+    if (evType === "substitution") {
+      if (!evOut || !evIn || evOut === evIn) return;
+      const out = newMatch.lineups.find((l) => l.playerId === evOut);
+      const teamId = out?.teamId ?? eligiblePlayers().find((p) => p.id === evOut)?.teamId ?? null;
+      const minute = evMinute.trim() === "" ? null : Number(evMinute) || 0;
+      setNewMatch((m) => {
+        const lineups = m.lineups.some((l) => l.playerId === evIn)
+          ? m.lineups
+          : [
+              ...m.lineups,
+              {
+                playerId: evIn,
+                teamId,
+                position: out?.position ?? defaultPos(teamId, evIn),
+                isStarter: false,
+                rating: null,
+              } as MatchLineup,
+            ];
+        return {
+          ...m,
+          lineups,
+          events: [
+            ...m.events,
+            { playerId: evIn, teamId, type: "substitution" as MatchEventType, minute, outPlayerId: evOut },
+          ],
+        };
+      });
+      setEvOut("");
+      setEvIn("");
+      setEvMinute("");
+      return;
+    }
     if (!evPlayer) return;
     const teamId = eligiblePlayers().find((p) => p.id === evPlayer)?.teamId ?? null;
     const minute = evMinute.trim() === "" ? null : Number(evMinute) || 0;
@@ -283,6 +387,8 @@ export default function AdminTournamentsPage() {
     setEvPlayer("");
     setEvType("goal");
     setEvMinute("");
+    setEvOut("");
+    setEvIn("");
     setErr("");
     setMsg("");
   }
@@ -294,15 +400,25 @@ export default function AdminTournamentsPage() {
     setErr("");
     const scheduled = scheduledMode;
     const isLive = opts?.endLive || scheduled ? false : newMatch.isLive;
+    // Escalação obrigatória para qualquer súmula/partida ao vivo (não em agendadas).
+    if (!scheduled) {
+      const homeN = newMatch.lineups.filter((l) => l.teamId === newMatch.homeTeamId).length;
+      const awayN = newMatch.lineups.filter((l) => l.teamId === newMatch.awayTeamId).length;
+      if (!newMatch.homeTeamId || !newMatch.awayTeamId)
+        return finish("Selecione os dois times antes de salvar.");
+      if (homeN === 0 || awayN === 0)
+        return finish("Escale ao menos um jogador de cada time antes de salvar.");
+    }
     // MVP só vale para partida encerrada (não ao vivo / não agendada)
     const mvp = isLive || scheduled ? null : newMatch.mvpPlayerId;
+    // placar automático: gols normais/pênaltis + gol contra creditado ao adversário
+    const score = matchScore(newMatch.events, newMatch.homeTeamId, newMatch.awayTeamId);
     const row = {
       tournament_id: draft.id,
       home_team_id: newMatch.homeTeamId,
       away_team_id: newMatch.awayTeamId,
-      // placar automático: derivado dos gols (gol normal + pênalti convertido)
-      home_score: teamGoals(newMatch.events, newMatch.homeTeamId),
-      away_score: teamGoals(newMatch.events, newMatch.awayTeamId),
+      home_score: score.home,
+      away_score: score.away,
       is_live: isLive,
       scheduled,
       mvp_player_id: mvp,
@@ -330,9 +446,26 @@ export default function AdminTournamentsPage() {
           team_id: e.teamId,
           type: e.type,
           minute: e.minute,
+          secondary_player_id: e.outPlayerId ?? null,
         })),
       );
       if (ee) return finish(ee.message);
+    }
+
+    // sincroniza a escalação + notas (apaga e regrava)
+    await supabase.from("match_lineups").delete().eq("match_id", matchId);
+    if (newMatch.lineups.length) {
+      const { error: le } = await supabase.from("match_lineups").insert(
+        newMatch.lineups.map((l) => ({
+          match_id: matchId,
+          player_id: l.playerId,
+          team_id: l.teamId,
+          position: l.position,
+          is_starter: l.isStarter,
+          rating: l.rating,
+        })),
+      );
+      if (le) return finish(le.message);
     }
 
     setBusy(false);
@@ -576,9 +709,10 @@ export default function AdminTournamentsPage() {
   const sumulas = matches.filter((m) => !m.isLive && !m.scheduled);
   const liveMatches = matches.filter((m) => m.isLive);
   const scheduledMatches = matches.filter((m) => m.scheduled);
-  // placar automático do rascunho (derivado dos gols)
-  const draftScoreA = teamGoals(newMatch.events, newMatch.homeTeamId);
-  const draftScoreB = teamGoals(newMatch.events, newMatch.awayTeamId);
+  // placar automático do rascunho (gols + gol contra ao adversário)
+  const draftScore = matchScore(newMatch.events, newMatch.homeTeamId, newMatch.awayTeamId);
+  const draftScoreA = draftScore.home;
+  const draftScoreB = draftScore.away;
 
   const inputC =
     "rounded-md bg-panel p-2 text-sm text-white focus:outline-none focus:ring-1 focus:ring-gold/50";
@@ -613,8 +747,10 @@ export default function AdminTournamentsPage() {
                 .map(
                   (e) =>
                     `${eventEmoji(e.type)} ${playerName(e.playerId)}${
-                      e.minute != null ? ` ${e.minute}'` : ""
-                    }`,
+                      e.type === "substitution" && e.outPlayerId
+                        ? ` ← ${playerName(e.outPlayerId)}`
+                        : ""
+                    }${e.minute != null ? ` ${e.minute}'` : ""}`,
                 )
                 .join("  ·  ")}
             </div>
@@ -639,6 +775,11 @@ export default function AdminTournamentsPage() {
 
   function renderEditor() {
     const bothTeams = !!newMatch.homeTeamId && !!newMatch.awayTeamId;
+    // escalação obrigatória para súmula/partida ao vivo (não em agendadas)
+    const homeLineupN = newMatch.lineups.filter((l) => l.teamId === newMatch.homeTeamId).length;
+    const awayLineupN = newMatch.lineups.filter((l) => l.teamId === newMatch.awayTeamId).length;
+    const lineupMissing =
+      !scheduledMode && bothTeams && (homeLineupN === 0 || awayLineupN === 0);
     return (
       <div className="mt-3 flex flex-col gap-2 border-t border-white/5 pt-3">
         <div className="grid grid-cols-2 items-end gap-2 sm:grid-cols-5">
@@ -698,7 +839,121 @@ export default function AdminTournamentsPage() {
           </p>
         ) : (
           <>
-        {/* eventos (gols, pênaltis, assistências, cartões) */}
+        {/* escalação: quem jogou e em qual posição (só esses aparecem na súmula) */}
+        <div className="flex flex-col gap-3 rounded-xl border border-white/5 bg-gradient-to-b from-panel to-base/30 p-3">
+          <div className="flex items-center gap-2">
+            <span className="flex h-6 w-6 items-center justify-center rounded-lg bg-gold/15 text-sm">
+              🧩
+            </span>
+            <span className="text-xs font-extrabold uppercase tracking-wide">Escalação</span>
+            <span className="text-[10px] text-faint">toque para escalar quem entrou em campo</span>
+          </div>
+          {!bothTeams ? (
+            <span className="text-[11px] text-faint">
+              Selecione os dois times para montar a escalação.
+            </span>
+          ) : (
+            <div className="grid gap-4 lg:grid-cols-2">
+              {[newMatch.homeTeamId, newMatch.awayTeamId].map((tid) => {
+                const list = [...(rosters[tid ?? ""] ?? [])].sort((a, b) =>
+                  playerName(a.playerId).localeCompare(playerName(b.playerId)),
+                );
+                const count = newMatch.lineups.filter((l) => l.teamId === tid).length;
+                return (
+                  <div key={tid} className="flex flex-col gap-2">
+                    <div className="flex items-center justify-between rounded-lg bg-base/60 px-2.5 py-1.5">
+                      <span className="truncate text-xs font-bold">{teamName(tid)}</span>
+                      <span
+                        className={`shrink-0 rounded-full px-2 py-0.5 text-[10px] font-bold ${
+                          count ? "bg-gold/20 text-gold" : "bg-white/5 text-faint"
+                        }`}
+                      >
+                        {count} em campo
+                      </span>
+                    </div>
+                    {list.length === 0 && (
+                      <span className="text-[10px] text-faint">Sem elenco cadastrado.</span>
+                    )}
+                    <div className="grid grid-cols-3 gap-1.5 sm:grid-cols-4">
+                      {list.map((r) => {
+                        const entry = lineupOf(r.playerId);
+                        const selected = !!entry;
+                        return (
+                          <div
+                            key={r.playerId}
+                            className={`relative flex flex-col items-center gap-1 rounded-lg border p-1.5 transition ${
+                              selected
+                                ? "border-gold/60 bg-gold/10"
+                                : "border-white/5 bg-base/40 opacity-60 hover:border-white/15 hover:opacity-100"
+                            }`}
+                          >
+                            <button
+                              type="button"
+                              onClick={() => toggleLineup(r.playerId, tid)}
+                              title={selected ? "Remover da escalação" : "Escalar"}
+                              className="flex w-full flex-col items-center gap-0.5"
+                            >
+                              {selected && (
+                                <span className="absolute right-1 top-1 flex h-4 w-4 items-center justify-center rounded-full bg-gold text-[9px] font-black text-[#1a1a1e]">
+                                  ✓
+                                </span>
+                              )}
+                              {selected && entry && !entry.isStarter && (
+                                <span
+                                  title="Entrou por substituição"
+                                  className="absolute left-1 top-1 text-[10px]"
+                                >
+                                  🔺
+                                </span>
+                              )}
+                              <span className="flex h-12 w-11 items-end justify-center overflow-hidden rounded-md bg-base">
+                                {/* eslint-disable-next-line @next/next/no-img-element */}
+                                <img
+                                  src={avatarUrl(playerNick[r.playerId] || playerName(r.playerId))}
+                                  alt=""
+                                  className="object-contain"
+                                  style={{ width: 44, height: 56 }}
+                                />
+                              </span>
+                              <span className="w-full truncate text-center text-[10px] font-semibold leading-tight">
+                                {playerName(r.playerId)}
+                              </span>
+                            </button>
+                            {selected && (
+                              <div className="flex flex-wrap justify-center gap-0.5">
+                                {POSITIONS.map((p) => {
+                                  const active = entry?.position === p.key;
+                                  return (
+                                    <button
+                                      key={p.key}
+                                      type="button"
+                                      onClick={() =>
+                                        setLineupPos(r.playerId, active ? null : p.key)
+                                      }
+                                      className={`rounded px-1 py-0.5 text-[8px] font-bold transition ${
+                                        active
+                                          ? "bg-gold text-[#1a1a1e]"
+                                          : "bg-base text-faint hover:text-white"
+                                      }`}
+                                    >
+                                      {p.sigla}
+                                    </button>
+                                  );
+                                })}
+                              </div>
+                            )}
+                          </div>
+                        );
+                      })}
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          )}
+        </div>
+
+        {/* eventos (gols, pênaltis, assistências, cartões, substituições) */}
         <div className="flex flex-col gap-2 rounded-md bg-panel p-2">
           {!bothTeams ? (
             <span className="text-[11px] text-faint">
@@ -707,27 +962,6 @@ export default function AdminTournamentsPage() {
           ) : (
             <>
               <div className="flex flex-wrap items-end gap-2">
-                <label className="flex flex-col gap-1 text-[11px]">
-                  Jogador
-                  <select
-                    className={inputC}
-                    value={evPlayer}
-                    onChange={(e) => setEvPlayer(e.target.value)}
-                  >
-                    <option value="">Selecione…</option>
-                    {[newMatch.homeTeamId, newMatch.awayTeamId].map((tid) => (
-                      <optgroup key={tid} label={teamName(tid)}>
-                        {eligiblePlayers()
-                          .filter((p) => p.teamId === tid)
-                          .map((p) => (
-                            <option key={p.id} value={p.id}>
-                              {p.name}
-                            </option>
-                          ))}
-                      </optgroup>
-                    ))}
-                  </select>
-                </label>
                 <label className="flex flex-col gap-1 text-[11px]">
                   Evento
                   <select
@@ -742,6 +976,81 @@ export default function AdminTournamentsPage() {
                     ))}
                   </select>
                 </label>
+                {evType === "substitution" ? (
+                  <>
+                    <label className="flex flex-col gap-1 text-[11px]">
+                      Sai 🔻
+                      <select
+                        className={inputC}
+                        value={evOut}
+                        onChange={(e) => {
+                          setEvOut(e.target.value);
+                          setEvIn("");
+                        }}
+                      >
+                        <option value="">Selecione…</option>
+                        {[newMatch.homeTeamId, newMatch.awayTeamId].map((tid) => (
+                          <optgroup key={tid} label={teamName(tid)}>
+                            {newMatch.lineups
+                              .filter((l) => l.teamId === tid)
+                              .map((l) => (
+                                <option key={l.playerId} value={l.playerId}>
+                                  {playerName(l.playerId)}
+                                </option>
+                              ))}
+                          </optgroup>
+                        ))}
+                      </select>
+                    </label>
+                    <label className="flex flex-col gap-1 text-[11px]">
+                      Entra 🔺
+                      <select
+                        className={inputC}
+                        value={evIn}
+                        disabled={!evOut}
+                        onChange={(e) => setEvIn(e.target.value)}
+                      >
+                        <option value="">Selecione…</option>
+                        {(() => {
+                          const outTeam =
+                            newMatch.lineups.find((l) => l.playerId === evOut)?.teamId ?? null;
+                          return (rosters[outTeam ?? ""] ?? [])
+                            .filter((r) => !newMatch.lineups.some((l) => l.playerId === r.playerId))
+                            .sort((a, b) =>
+                              playerName(a.playerId).localeCompare(playerName(b.playerId)),
+                            )
+                            .map((r) => (
+                              <option key={r.playerId} value={r.playerId}>
+                                {playerName(r.playerId)}
+                              </option>
+                            ));
+                        })()}
+                      </select>
+                    </label>
+                  </>
+                ) : (
+                  <label className="flex flex-col gap-1 text-[11px]">
+                    Jogador
+                    <select
+                      className={inputC}
+                      value={evPlayer}
+                      onChange={(e) => setEvPlayer(e.target.value)}
+                    >
+                      <option value="">Selecione…</option>
+                      {[newMatch.homeTeamId, newMatch.awayTeamId].map((tid) => (
+                        <optgroup key={tid} label={teamName(tid)}>
+                          {eligiblePlayers()
+                            .filter((p) => p.teamId === tid)
+                            .map((p) => (
+                              <option key={p.id} value={p.id}>
+                                {p.name}
+                              </option>
+                            ))}
+                        </optgroup>
+                      ))}
+                    </select>
+                  </label>
+                )}
                 <label className="flex w-16 flex-col gap-1 text-[11px]">
                   Minuto
                   <input
@@ -770,6 +1079,9 @@ export default function AdminTournamentsPage() {
                       className="rounded-md bg-base px-2 py-0.5 text-[11px]"
                     >
                       {eventEmoji(e.type)} {playerName(e.playerId)}
+                      {e.type === "substitution" && e.outPlayerId
+                        ? ` ← ${playerName(e.outPlayerId)}`
+                        : ""}
                       {e.minute != null ? ` ${e.minute}'` : ""} ✕
                     </button>
                   ))}
@@ -802,14 +1114,67 @@ export default function AdminTournamentsPage() {
             </select>
           </label>
         )}
+
+        {/* notas dos jogadores (só em súmula encerrada) */}
+        {!liveMode && (
+          <div className="flex flex-col gap-2 rounded-md bg-panel p-2">
+            <span className="text-[11px] font-semibold">📝 Notas dos jogadores (0–10)</span>
+            {newMatch.lineups.length === 0 ? (
+              <span className="text-[11px] text-faint">
+                Escale os jogadores na seção acima para lançar notas.
+              </span>
+            ) : (
+              <div className="grid gap-3 sm:grid-cols-2">
+                {[newMatch.homeTeamId, newMatch.awayTeamId].map((tid) => (
+                  <div key={tid} className="flex flex-col gap-1">
+                    <span className="text-[11px] font-bold text-faint">{teamName(tid)}</span>
+                    {newMatch.lineups
+                      .filter((l) => l.teamId === tid)
+                      .sort((a, b) => playerName(a.playerId).localeCompare(playerName(b.playerId)))
+                      .map((l) => (
+                        <div key={l.playerId} className="flex items-center gap-2 text-[11px]">
+                          <span className="flex-1 truncate">
+                            {playerName(l.playerId)}
+                            {!l.isStarter && <span className="text-draw"> (entrou)</span>}
+                          </span>
+                          <input
+                            type="number"
+                            min={0}
+                            max={10}
+                            step={0.1}
+                            placeholder="—"
+                            className={`${inputC} w-16 py-1`}
+                            value={l.rating ?? ""}
+                            onChange={(e) =>
+                              setRating(
+                                l.playerId,
+                                e.target.value === "" ? null : Number(e.target.value),
+                              )
+                            }
+                          />
+                        </div>
+                      ))}
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+        )}
           </>
+        )}
+
+        {/* aviso: escalação obrigatória para novas súmulas/partidas ao vivo */}
+        {lineupMissing && (
+          <p className="rounded-md bg-loss/10 px-2 py-1.5 text-[11px] font-semibold text-loss">
+            ⚠ Escale ao menos um jogador de cada time na seção 🧩 Escalação antes de salvar.
+          </p>
         )}
 
         {/* ações */}
         <div className="flex flex-wrap items-center gap-2">
           <button
             onClick={() => saveMatch()}
-            disabled={busy}
+            disabled={busy || lineupMissing}
             className="rounded-md bg-gold px-4 py-2 text-sm font-bold text-[#1a1a1e] hover:opacity-90 disabled:opacity-60"
           >
             {busy

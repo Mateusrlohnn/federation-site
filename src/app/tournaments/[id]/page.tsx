@@ -16,7 +16,7 @@ async function getData(id: string): Promise<ScreenData | null> {
       supabase
         .from("tournaments")
         .select(
-          "*, tournament_teams(team_id, seed, group_label), matches(*, match_events(player_id, team_id, type, minute)), tournament_messages(body)",
+          "*, tournament_teams(team_id, seed, group_label), matches(*, match_events(player_id, team_id, type, minute, secondary_player_id), match_lineups(player_id, team_id, position, is_starter, rating)), tournament_messages(body)",
         )
         .eq("id", id)
         .single(),
