@@ -11,7 +11,8 @@ export type TournamentFormat =
   | "pontos_corridos"
   | "suico"
   | "grupos_mata_mata"
-  | "mata_mata";
+  | "mata_mata"
+  | "wind_cup";
 
 export const TOURNAMENT_FORMATS: {
   value: TournamentFormat;
@@ -22,6 +23,7 @@ export const TOURNAMENT_FORMATS: {
   { value: "suico", label: "Sistema Suíço", desc: "Chaveamento por recorde de V/D." },
   { value: "grupos_mata_mata", label: "Grupos + Mata-Mata", desc: "Fase de grupos e eliminatórias." },
   { value: "mata_mata", label: "Mata-Mata", desc: "Eliminatórias diretas (chave)." },
+  { value: "wind_cup", label: "Wind Cup", desc: "8 times: pontos (7 jogos) + bracket Upper/Lower." },
 ];
 
 export function formatLabel(f: TournamentFormat | null): string {

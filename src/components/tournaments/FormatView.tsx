@@ -21,6 +21,13 @@ import {
   type SwissNode,
   type MatchLike,
 } from "@/lib/formats";
+import {
+  buildWindCupFromMatches,
+  windCupStandings,
+  windCupLeagueMatches,
+  type WindTie,
+  type WindCupResult,
+} from "@/lib/windCup";
 
 /**
  * Renderiza a estrutura do campeonato conforme o formato:
@@ -60,10 +67,12 @@ function StandingsTable({
   rows,
   byId,
   qualify = 4,
+  zoneColorOf,
 }: {
   rows: StandingRow[];
   byId: Map<string, TeamLite>;
   qualify?: number;
+  zoneColorOf?: (pos: number) => string; // sobrepõe a zona padrão (ex.: Wind Cup)
 }) {
   return (
     <div className="overflow-hidden rounded-lg bg-card">
@@ -95,7 +104,7 @@ function StandingsTable({
                     <span className="flex items-center">
                       <span
                         className="mr-2 h-6 w-1 rounded-full"
-                        style={{ backgroundColor: zoneColor(pos, qualify) }}
+                        style={{ backgroundColor: zoneColorOf ? zoneColorOf(pos) : zoneColor(pos, qualify) }}
                       />
                       <span className="font-mono text-sm font-bold text-faint">{pos}</span>
                     </span>
@@ -383,6 +392,206 @@ function OutcomeBox({
   );
 }
 
+// ---- WIND CUP — caixa de confronto do bracket (com pênaltis) ----
+function WindTieBox({ tie, byId }: { tie: WindTie; byId: Map<string, TeamLite> }) {
+  const rows = [
+    { id: tie.home, score: tie.homeScore, pens: tie.homePens, win: tie.winner != null && tie.winner === tie.home },
+    { id: tie.away, score: tie.awayScore, pens: tie.awayPens, win: tie.winner != null && tie.winner === tie.away },
+  ];
+  return (
+    <div className="overflow-hidden rounded-lg bg-panel ring-1 ring-white/10">
+      {rows.map((s, si) => (
+        <div
+          key={si}
+          className={`flex items-center gap-2 px-2.5 py-2 text-sm ${
+            si === 0 ? "border-b border-white/5" : ""
+          } ${s.win ? "bg-gold/15 font-bold" : ""}`}
+          style={s.win ? { boxShadow: `inset 3px 0 0 0 ${ACCENT.gold}` } : undefined}
+        >
+          <span className="flex h-5 w-5 shrink-0 items-center justify-center overflow-hidden rounded bg-base">
+            {slotLogo(s.id, byId) ? (
+              // eslint-disable-next-line @next/next/no-img-element
+              <img
+                src={slotLogo(s.id, byId)}
+                alt=""
+                className="h-full w-full object-cover"
+                style={focusStyle(slotLogo(s.id, byId))}
+              />
+            ) : (
+              <Icon name="shield" className="text-[9px] text-faint" />
+            )}
+          </span>
+          <span className={`min-w-0 flex-1 truncate ${!s.id ? "text-faint" : ""}`}>
+            {slotName(s.id, byId)}
+          </span>
+          {s.pens != null && (
+            <span className="shrink-0 font-mono text-[11px] text-draw">({s.pens})</span>
+          )}
+          <span className="shrink-0 font-mono tabular-nums">{s.score != null ? s.score : ""}</span>
+        </div>
+      ))}
+    </div>
+  );
+}
+
+// ---- WIND CUP — coluna do bracket com rótulo e legenda do fluxo ----
+function WindColumn({
+  label,
+  caption,
+  children,
+}: {
+  label: string;
+  caption?: string;
+  children: React.ReactNode;
+}) {
+  return (
+    <div className="flex min-w-[180px] flex-col justify-center gap-2">
+      <span className="text-center text-[10px] font-bold uppercase tracking-wide text-gold">
+        {label}
+      </span>
+      <div className="flex flex-col gap-2">{children}</div>
+      {caption && <span className="text-center text-[9px] leading-tight text-faint">{caption}</span>}
+    </div>
+  );
+}
+
+// ---- WIND CUP — classificação (zonas) + bracket Upper/Lower/Semi/Final ----
+function WindCupView({
+  result,
+  standings,
+  games,
+  byId,
+}: {
+  result: WindCupResult;
+  standings: StandingRow[];
+  games: MatchLike[];
+  byId: Map<string, TeamLite>;
+}) {
+  const { seeding, ties } = result;
+  const names = (ids: string[]) => ids.map((id) => byId.get(id)?.name ?? "—").join(", ") || "—";
+  const finalistName = result.finalist ? byId.get(result.finalist)?.name ?? "—" : "—";
+  const upper = seeding.filter((s) => s.role === "upper1").map((s) => s.teamId);
+  const lower = seeding.filter((s) => s.role === "lower1").map((s) => s.teamId);
+  const championName = result.champion ? byId.get(result.champion)?.name ?? "—" : null;
+
+  // Zona da classificação: 1º ouro, 2-3 verde (Upper), 4-5 laranja (Lower), 6-8 vermelho.
+  const zoneColorOf = (pos: number) =>
+    pos === 1 ? ACCENT.gold : pos <= 3 ? ACCENT.win : pos <= 5 ? ACCENT.draw : ACCENT.loss;
+
+  return (
+    <div className="flex flex-col gap-6">
+      {/* Classificação da fase de pontos */}
+      <div>
+        <h3 className="mb-2 text-xs font-bold uppercase tracking-wide text-faint">
+          Fase de pontos — turno único (7 jogos por time)
+        </h3>
+        <StandingsTable rows={standings} byId={byId} zoneColorOf={zoneColorOf} />
+      </div>
+
+      {/* Zonas de classificação para a eliminatória */}
+      <div className="grid gap-2 sm:grid-cols-4">
+        {[
+          { t: "🏁 Finalista (1º)", v: finalistName, c: ACCENT.gold },
+          { t: "Upper 1 (2º · 3º)", v: names(upper), c: ACCENT.win },
+          { t: "Lower 1 (4º · 5º)", v: names(lower), c: ACCENT.draw },
+          { t: "Rebaixados (6º–8º)", v: names(result.relegated), c: ACCENT.loss },
+        ].map((z) => (
+          <div
+            key={z.t}
+            className="rounded-lg p-3"
+            style={{ backgroundColor: `${z.c}14`, boxShadow: `inset 0 0 0 1px ${z.c}55` }}
+          >
+            <div className="text-[11px] font-extrabold uppercase tracking-wide" style={{ color: z.c }}>
+              {z.t}
+            </div>
+            <div className="mt-1 text-sm font-semibold">{z.v}</div>
+          </div>
+        ))}
+      </div>
+
+      {/* Bracket Upper / Lower / Semi / Final */}
+      <div>
+        <h3 className="mb-3 text-sm font-bold uppercase tracking-wide text-faint">
+          Fase eliminatória
+        </h3>
+        <div className="overflow-x-auto pb-1">
+          <div className="mx-auto flex w-max items-stretch gap-2 sm:gap-4">
+          <WindColumn label="Mata-mata inicial">
+            <WindTieBox tie={ties.upper1} byId={byId} />
+            <span className="text-center text-[9px] leading-tight text-faint">
+              Upper 1 · vencedor → Semi · perdedor → Lower 2
+            </span>
+            <WindTieBox tie={ties.lower1} byId={byId} />
+            <span className="text-center text-[9px] leading-tight text-faint">
+              Lower 1 · vencedor → Lower 2 · perdedor fora
+            </span>
+          </WindColumn>
+          <span className="self-center text-lg text-faint">→</span>
+          <WindColumn label="Lower 2" caption="vencedor → Semi · perdedor fora (suporta pênaltis)">
+            <WindTieBox tie={ties.lower2} byId={byId} />
+          </WindColumn>
+          <span className="self-center text-lg text-faint">→</span>
+          <WindColumn label="Semi-Final" caption="vencedor → Grande Final · perdedor fora">
+            <WindTieBox tie={ties.semi} byId={byId} />
+          </WindColumn>
+          <span className="self-center text-lg text-faint">→</span>
+          <WindColumn label="Grande Final" caption="1º da fase de pontos vs vencedor da Semi">
+            <WindTieBox tie={ties.final} byId={byId} />
+            {championName && (
+              <div className="mt-1 rounded-md bg-gold px-2 py-1 text-center text-xs font-extrabold text-[#1a1a1e]">
+                🏆 {championName}
+              </div>
+            )}
+          </WindColumn>
+          </div>
+        </div>
+      </div>
+
+      {/* Jogos da fase de pontos — confrontos livres lançados pelo admin (sem rodadas fixas) */}
+      <div>
+        <h3 className="mb-1 text-xs font-bold uppercase tracking-wide text-faint">
+          Fase de pontos — jogos
+        </h3>
+        <p className="mb-2 text-[11px] text-faint">
+          Sem rodadas obrigatórias: os confrontos são marcados livremente pelo admin.
+        </p>
+        {games.length === 0 ? (
+          <p className="rounded-lg bg-panel/50 p-3 text-sm text-faint">
+            Nenhum jogo da fase de pontos lançado ainda.
+          </p>
+        ) : (
+          <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-3">
+            {games.map((m, i) => {
+              const home = m.homeTeamId as string;
+              const away = m.awayTeamId as string;
+              const homeWin = m.homeScore > m.awayScore;
+              const awayWin = m.awayScore > m.homeScore;
+              return (
+                <div
+                  key={i}
+                  className="flex items-center gap-2 rounded-md bg-panel px-2.5 py-2 text-xs"
+                >
+                  <span className={`min-w-0 flex-1 truncate text-right ${homeWin ? "font-bold text-white" : ""}`}>
+                    {byId.get(home)?.name ?? "—"}
+                  </span>
+                  <span className="shrink-0 font-mono font-bold tabular-nums">
+                    <span style={{ color: homeWin ? ACCENT.win : undefined }}>{m.homeScore}</span>
+                    <span className="mx-0.5 text-faint">×</span>
+                    <span style={{ color: awayWin ? ACCENT.win : undefined }}>{m.awayScore}</span>
+                  </span>
+                  <span className={`min-w-0 flex-1 truncate ${awayWin ? "font-bold text-white" : ""}`}>
+                    {byId.get(away)?.name ?? "—"}
+                  </span>
+                </div>
+              );
+            })}
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
 export default function FormatView({
   format,
   teams,
@@ -475,6 +684,22 @@ export default function FormatView({
           ? standings.map((r) => r.teamId)
           : teamIds;
     return <Bracket rounds={buildKnockout(seeded, matches)} byId={byId} />;
+  }
+
+  // ---- WIND CUP (fase de pontos + bracket Upper/Lower/Semi/Final) ----
+  if (format === "wind_cup") {
+    // semeadura pela classificação da liga; se ainda não há jogos, usa a ordem do sorteio/vínculo.
+    const standings = windCupStandings(teamIds, matches);
+    const ordered = standings.some((r) => r.played > 0) ? standings.map((r) => r.teamId) : teamIds;
+    const result = buildWindCupFromMatches(ordered, matches);
+    return (
+      <WindCupView
+        result={result}
+        standings={standings}
+        games={windCupLeagueMatches(matches)}
+        byId={byId}
+      />
+    );
   }
 
   // ---- SISTEMA SUÍÇO (template de possibilidades + setas — estilo modelo suíço) ----
