@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 import Icon from "@/components/ui/Icon";
 import { avatarUrl } from "@/lib/hof";
+import { focusStyle } from "@/lib/imageFocus";
 import { gradeClass, type Grade } from "@/lib/tournaments";
 
 /**
@@ -154,12 +155,12 @@ function Lineup({ side }: { side: SheetSide }) {
         <span className="flex h-9 w-9 items-center justify-center overflow-hidden rounded-lg bg-base">
           {side.logo ? (
             // eslint-disable-next-line @next/next/no-img-element
-            <img src={side.logo} alt="" className="h-full w-full object-cover" />
+            <img src={side.logo} alt="" className="h-full w-full object-cover" style={focusStyle(side.logo)} />
           ) : (
             <Icon name="shield" className="text-faint" />
           )}
         </span>
-        <span className="flex-1 truncate text-base font-bold">{side.name}</span>
+        <span className="flex-1 truncate text-base font-bold text-white">{side.name}</span>
         <span className="text-2xl font-extrabold tabular-nums">{side.score}</span>
       </div>
 
@@ -225,7 +226,7 @@ export default function MatchSheet({ sheet }: { sheet: SheetData }) {
 
             {/* placar */}
             <div className="flex items-center justify-center gap-4 pr-10 sm:gap-8">
-              <span className="min-w-0 flex-1 truncate text-right text-lg font-bold">
+              <span className="min-w-0 flex-1 truncate text-right text-lg font-bold text-white">
                 {sheet.home.name}
               </span>
               <span className="flex shrink-0 items-center gap-2 text-4xl font-extrabold tabular-nums">
@@ -233,7 +234,7 @@ export default function MatchSheet({ sheet }: { sheet: SheetData }) {
                 <span className="text-xl text-faint">×</span>
                 {sheet.away.score}
               </span>
-              <span className="min-w-0 flex-1 truncate text-lg font-bold">{sheet.away.name}</span>
+              <span className="min-w-0 flex-1 truncate text-lg font-bold text-white">{sheet.away.name}</span>
             </div>
             <div className="mt-1 flex items-center justify-center gap-3 text-xs text-faint">
               {sheet.playedAt && <span>{sheet.playedAt}</span>}

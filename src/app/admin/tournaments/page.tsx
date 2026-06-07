@@ -24,6 +24,7 @@ import {
 } from "@/lib/tournaments";
 import { POSITIONS, type Position } from "@/lib/teams";
 import { avatarUrl } from "@/lib/hof";
+import { focusStyle } from "@/lib/imageFocus";
 
 import {
   TOURNAMENT_FORMATS,
@@ -1278,6 +1279,7 @@ export default function AdminTournamentsPage() {
                       src={t.imageUrl}
                       alt=""
                       className="h-6 w-6 shrink-0 rounded object-cover"
+                      style={focusStyle(t.imageUrl)}
                     />
                   )}
                   <span className="flex-1 truncate">{t.name}</span>

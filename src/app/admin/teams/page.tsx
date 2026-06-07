@@ -4,6 +4,7 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import { createClient } from "@/lib/supabase/client";
 import Icon from "@/components/ui/Icon";
 import ImageUpload from "@/components/ui/ImageUpload";
+import { focusStyle } from "@/lib/imageFocus";
 import {
   TEAM_FIELDS,
   POSITIONS,
@@ -192,7 +193,7 @@ export default function AdminTeamsPage() {
                   <span className="flex h-6 w-6 shrink-0 items-center justify-center overflow-hidden rounded bg-base">
                     {t.logoUrl ? (
                       // eslint-disable-next-line @next/next/no-img-element
-                      <img src={t.logoUrl} alt="" className="h-full w-full object-cover" />
+                      <img src={t.logoUrl} alt="" className="h-full w-full object-cover" style={focusStyle(t.logoUrl)} />
                     ) : (
                       <Icon name="shield" className="text-[10px] text-faint" />
                     )}

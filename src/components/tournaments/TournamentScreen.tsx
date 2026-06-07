@@ -3,6 +3,7 @@ import Icon from "@/components/ui/Icon";
 import { ACCENT } from "@/components/ui/stats";
 import maxwidth from "@/styles/maxwidth.module.css";
 import { avatarUrl } from "@/lib/hof";
+import { focusStyle } from "@/lib/imageFocus";
 import { POSITIONS, type Position } from "@/lib/teams";
 import {
   computeTopScorers,
@@ -183,7 +184,7 @@ function TeamLogo({ logo, size = 40 }: { logo?: string; size?: number }) {
     >
       {logo ? (
         // eslint-disable-next-line @next/next/no-img-element
-        <img src={logo} alt="" className="h-full w-full object-cover" />
+        <img src={logo} alt="" className="h-full w-full object-cover" style={focusStyle(logo)} />
       ) : (
         <Icon name="shield" className="text-faint" />
       )}
@@ -515,7 +516,12 @@ export default function TournamentScreen({ data }: { data: ScreenData }) {
         <div className="relative h-52 w-full sm:h-72">
           {data.banner ? (
             // eslint-disable-next-line @next/next/no-img-element
-            <img src={data.banner} alt={data.name} className="h-full w-full object-cover" />
+            <img
+              src={data.banner}
+              alt={data.name}
+              className="h-full w-full object-cover"
+              style={focusStyle(data.banner)}
+            />
           ) : (
             <div className="h-full w-full bg-gradient-to-br from-panel via-card to-base" />
           )}
@@ -532,7 +538,12 @@ export default function TournamentScreen({ data }: { data: ScreenData }) {
           <span className="flex h-24 w-24 shrink-0 items-center justify-center overflow-hidden rounded-2xl bg-panel shadow-xl ring-2 ring-white/10 sm:h-28 sm:w-28">
             {data.logo ? (
               // eslint-disable-next-line @next/next/no-img-element
-              <img src={data.logo} alt={data.name} className="h-full w-full object-cover" />
+              <img
+                src={data.logo}
+                alt={data.name}
+                className="h-full w-full object-cover"
+                style={focusStyle(data.logo)}
+              />
             ) : (
               <Icon name="trophy" className="text-4xl text-gold/40" />
             )}

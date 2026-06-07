@@ -1,5 +1,6 @@
 import Icon from "@/components/ui/Icon";
 import { ACCENT } from "@/components/ui/stats";
+import { focusStyle } from "@/lib/imageFocus";
 import type { TourTeam } from "@/components/tournaments/shared";
 import {
   computeStandings,
@@ -38,7 +39,7 @@ function TeamCell({ team, small = false }: { team: TeamLite | undefined; small?:
       <span className={`flex ${s} shrink-0 items-center justify-center overflow-hidden rounded bg-base`}>
         {team?.logo ? (
           // eslint-disable-next-line @next/next/no-img-element
-          <img src={team.logo} alt="" className="h-full w-full object-cover" />
+          <img src={team.logo} alt="" className="h-full w-full object-cover" style={focusStyle(team.logo)} />
         ) : (
           <Icon name="shield" className="text-[10px] text-faint" />
         )}
@@ -219,7 +220,12 @@ function MatchBox({ m, byId }: { m: BracketMatch; byId: Map<string, TeamLite> })
           <span className="flex h-5 w-5 shrink-0 items-center justify-center overflow-hidden rounded bg-base">
             {slotLogo(s.slot, byId) ? (
               // eslint-disable-next-line @next/next/no-img-element
-              <img src={slotLogo(s.slot, byId)} alt="" className="h-full w-full object-cover" />
+              <img
+                src={slotLogo(s.slot, byId)}
+                alt=""
+                className="h-full w-full object-cover"
+                style={focusStyle(slotLogo(s.slot, byId))}
+              />
             ) : (
               <Icon name="shield" className="text-[9px] text-faint" />
             )}

@@ -1,6 +1,7 @@
 import Link from "next/link";
 import Icon from "@/components/ui/Icon";
 import maxwidth from "@/styles/maxwidth.module.css";
+import { focusStyle } from "@/lib/imageFocus";
 import { computeTopScorers } from "@/lib/tournaments";
 import { statusStyle, type TournamentView } from "@/components/tournaments/shared";
 
@@ -46,6 +47,7 @@ export default function TournamentsView({
                       src={t.banner}
                       alt={t.name}
                       className="h-full w-full object-cover transition-transform duration-300 group-hover:scale-105"
+                      style={focusStyle(t.banner)}
                     />
                   ) : (
                     <div className="flex h-full w-full items-center justify-center bg-gradient-to-br from-panel to-base">
@@ -75,7 +77,7 @@ export default function TournamentsView({
                     {t.logo && (
                       <span className="flex h-9 w-9 shrink-0 items-center justify-center overflow-hidden rounded-lg bg-panel/80 ring-1 ring-white/15">
                         {/* eslint-disable-next-line @next/next/no-img-element */}
-                        <img src={t.logo} alt="" className="h-full w-full object-cover" />
+                        <img src={t.logo} alt="" className="h-full w-full object-cover" style={focusStyle(t.logo)} />
                       </span>
                     )}
                     <h3 className="truncate text-lg font-extrabold tracking-tight text-shadow-lg">

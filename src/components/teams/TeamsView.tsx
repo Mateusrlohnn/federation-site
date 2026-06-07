@@ -3,6 +3,7 @@
 import { useState } from "react";
 import Icon, { ICONS } from "@/components/ui/Icon";
 import { ACCENT, ProportionBar } from "@/components/ui/stats";
+import { focusStyle } from "@/lib/imageFocus";
 import maxwidth from "@/styles/maxwidth.module.css";
 import TeamDetailModal, {
   type TeamDetail,
@@ -65,7 +66,12 @@ export default function TeamsView({
                       <div className="absolute inset-0 bg-gradient-to-t from-card via-card/60 to-card/20" />
                       <span className="relative flex h-16 w-16 shrink-0 items-center justify-center overflow-hidden rounded-lg bg-panel/80 ring-1 ring-white/10 transition-transform duration-300 group-hover:scale-105">
                         {/* eslint-disable-next-line @next/next/no-img-element */}
-                        <img src={t.logo} alt={t.name} className="h-full w-full object-cover" />
+                        <img
+                          src={t.logo}
+                          alt={t.name}
+                          className="h-full w-full object-cover"
+                          style={focusStyle(t.logo)}
+                        />
                       </span>
                     </>
                   ) : (

@@ -4,6 +4,7 @@ import { useEffect, useState } from "react";
 import Icon from "@/components/ui/Icon";
 import { ACCENT, ProportionBar } from "@/components/ui/stats";
 import { avatarUrl } from "@/lib/hof";
+import { focusStyle } from "@/lib/imageFocus";
 import { POSITIONS, type Position } from "@/lib/teams";
 
 /**
@@ -169,7 +170,12 @@ export default function TeamDetailModal({
           <div className="flex h-20 w-20 shrink-0 items-center justify-center overflow-hidden rounded-lg bg-panel">
             {team.logo ? (
               // eslint-disable-next-line @next/next/no-img-element
-              <img src={team.logo} alt={team.name} className="h-full w-full object-cover" />
+              <img
+                src={team.logo}
+                alt={team.name}
+                className="h-full w-full object-cover"
+                style={focusStyle(team.logo)}
+              />
             ) : (
               <Icon name="shield" className="text-2xl text-faint" />
             )}
@@ -261,7 +267,7 @@ export default function TeamDetailModal({
                     <span className="flex h-9 w-9 shrink-0 items-center justify-center overflow-hidden rounded-md bg-base">
                       {c.image ? (
                         // eslint-disable-next-line @next/next/no-img-element
-                        <img src={c.image} alt="" className="h-full w-full object-cover" />
+                        <img src={c.image} alt="" className="h-full w-full object-cover" style={focusStyle(c.image)} />
                       ) : (
                         <Icon name="trophy" className="text-faint" />
                       )}

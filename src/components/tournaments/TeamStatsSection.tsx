@@ -4,6 +4,7 @@ import { useEffect, useState } from "react";
 import Icon from "@/components/ui/Icon";
 import { ACCENT } from "@/components/ui/stats";
 import { avatarUrl } from "@/lib/hof";
+import { focusStyle } from "@/lib/imageFocus";
 
 /**
  * "Times na disputa" — chips clicáveis que abrem um modal com as estatísticas
@@ -62,7 +63,7 @@ function TeamLogo({ logo, size = 40 }: { logo: string; size?: number }) {
     >
       {logo ? (
         // eslint-disable-next-line @next/next/no-img-element
-        <img src={logo} alt="" className="h-full w-full object-cover" />
+        <img src={logo} alt="" className="h-full w-full object-cover" style={focusStyle(logo)} />
       ) : (
         <Icon name="shield" className="text-faint" />
       )}
