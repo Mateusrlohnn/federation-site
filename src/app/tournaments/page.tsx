@@ -38,6 +38,11 @@ async function getData(): Promise<{
 
     if (t.error || !t.data) return { ...empty, teamNames, playerNames };
 
+    // Em andamento primeiro, depois Em breve e por fim Finalizado. Dentro de
+    // cada grupo mantém a ordem por data (o sort do JS é estável).
+    const statusRank = (s: string): number =>
+      s === "Em andamento" ? 0 : s === "Em breve" ? 1 : s === "Finalizado" ? 2 : 3;
+
     const tournaments: TournamentView[] = t.data.map((r: Record<string, unknown>) => {
       const teamIds = ((r.tournament_teams as { team_id: string }[] | undefined) ?? []).map(
         (x) => x.team_id,
@@ -61,6 +66,8 @@ async function getData(): Promise<{
         messages: (r.tournament_messages as { body: string }[]) ?? [],
       };
     });
+
+    tournaments.sort((a, b) => statusRank(a.status) - statusRank(b.status));
 
     return { tournaments, teamNames, playerNames };
   } catch {
