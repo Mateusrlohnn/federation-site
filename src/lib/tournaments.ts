@@ -258,6 +258,66 @@ export function matchLineupFor(m: Match, teamId: string | null): MatchLineup[] {
   return m.lineups.filter((l) => l.teamId === teamId);
 }
 
+/** Estatísticas de um jogador somando TODAS as partidas de copa (súmulas). */
+export type PlayerCupStats = {
+  matches: number; // partidas em que entrou em campo (apareceu na escalação)
+  goals: number; // gols (normais + pênaltis convertidos)
+  assists: number; // assistências
+  cleanSheets: number; // partidas em que o time do jogador não tomou gol
+};
+
+export function emptyCupStats(): PlayerCupStats {
+  return { matches: 0, goals: 0, assists: 0, cleanSheets: 0 };
+}
+
+/**
+ * Agrega, por jogador, as estatísticas de todas as partidas FINALIZADAS
+ * (ignora agendadas e ao vivo).
+ *
+ * - matches: cada jogador escalado (titular ou que entrou) conta +1 partida.
+ * - goals/assists: vêm dos eventos da partida.
+ * - cleanSheets: quando um time não sofre gol na partida, TODOS os jogadores
+ *   escalados daquele time ganham +1 clean sheet.
+ */
+export function computePlayerCupStats(matches: Match[]): Map<string, PlayerCupStats> {
+  const map = new Map<string, PlayerCupStats>();
+  const ensure = (id: string) => {
+    let s = map.get(id);
+    if (!s) {
+      s = emptyCupStats();
+      map.set(id, s);
+    }
+    return s;
+  };
+
+  for (const m of matches) {
+    if (m.isLive || m.scheduled) continue; // só súmulas finalizadas
+
+    // Partidas jogadas: cada jogador escalado conta uma vez (sem duplicar).
+    const counted = new Set<string>();
+    for (const l of m.lineups) {
+      if (counted.has(l.playerId)) continue;
+      counted.add(l.playerId);
+      ensure(l.playerId).matches++;
+    }
+
+    // Gols e assistências a partir dos eventos.
+    for (const e of m.events) {
+      if (isGoal(e.type)) ensure(e.playerId).goals++;
+      else if (e.type === "assist") ensure(e.playerId).assists++;
+    }
+
+    // Clean sheet: o time que NÃO sofreu gol credita o feito a todos os seus
+    // jogadores escalados (o time mandante sofre os gols do visitante e vice-versa).
+    if (m.homeTeamId && m.awayScore === 0)
+      for (const l of m.lineups) if (l.teamId === m.homeTeamId) ensure(l.playerId).cleanSheets++;
+    if (m.awayTeamId && m.homeScore === 0)
+      for (const l of m.lineups) if (l.teamId === m.awayTeamId) ensure(l.playerId).cleanSheets++;
+  }
+
+  return map;
+}
+
 /** Soma os gols por jogador (gol normal + pênalti convertido) — artilharia. */
 export function computeTopScorers(matches: Match[]): { playerId: string; goals: number }[] {
   const totals = new Map<string, number>();

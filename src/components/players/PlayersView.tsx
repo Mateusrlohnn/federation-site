@@ -7,6 +7,7 @@ import PlayerProfileModal from "@/components/players/PlayerProfileModal";
 import PlayerComparisonModal from "@/components/players/PlayerComparisonModal";
 import maxwidth from "@/styles/maxwidth.module.css";
 import { avatarUrl, type HofPlayer, type StatKey } from "@/lib/hof";
+import { type PlayerCupStats } from "@/lib/tournaments";
 
 const boards: { key: StatKey | "points"; label: string; icon: keyof typeof ICONS; color: string }[] = [
   { key: "points", label: "Pontos", icon: "trophy", color: ACCENT.gold },
@@ -32,7 +33,13 @@ function pageWindow(current: number, total: number): (number | "…")[] {
   return out;
 }
 
-export default function PlayersView({ players }: { players: HofPlayer[] }) {
+export default function PlayersView({
+  players,
+  cupStats = {},
+}: {
+  players: HofPlayer[];
+  cupStats?: Record<string, PlayerCupStats>;
+}) {
   const [q, setQ] = useState("");
   const [page, setPage] = useState(1);
   const [selected, setSelected] = useState<{ p: HofPlayer; rank: number } | null>(null);
@@ -278,6 +285,7 @@ export default function PlayersView({ players }: { players: HofPlayer[] }) {
       <PlayerProfileModal
         player={selected?.p ?? null}
         rank={selected?.rank ?? 0}
+        cup={selected?.p.id ? cupStats[selected.p.id] : undefined}
         onClose={() => setSelected(null)}
       />
 

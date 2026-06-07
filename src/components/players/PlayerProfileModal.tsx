@@ -4,6 +4,7 @@ import { useEffect } from "react";
 import { ACCENT } from "@/components/ui/stats";
 import { avatarUrl, STAT_FIELDS, type HofPlayer } from "@/lib/hof";
 import { POSITIONS } from "@/lib/teams";
+import { type PlayerCupStats } from "@/lib/tournaments";
 
 /**
  * Perfil de Jogador Detalhado — modal somente de apresentação.
@@ -56,10 +57,12 @@ function SectionTitle({ children }: { children: React.ReactNode }) {
 export default function PlayerProfileModal({
   player,
   rank,
+  cup,
   onClose,
 }: {
   player: HofPlayer | null;
   rank: number;
+  cup?: PlayerCupStats;
   onClose: () => void;
 }) {
   useEffect(() => {
@@ -91,6 +94,14 @@ export default function PlayerProfileModal({
   const awards = STAT_FIELDS.map((f) => ({ label: f.label, value: player[f.key] as number })).filter(
     (a) => a.value > 0,
   );
+
+  // Estatísticas em copas (somatório de todas as súmulas) — 0 quando não há dados.
+  const cupCards = [
+    { label: "Partidas", value: cup?.matches ?? 0, color: ACCENT.win },
+    { label: "Gols", value: cup?.goals ?? 0, color: ACCENT.gold },
+    { label: "Assistências", value: cup?.assists ?? 0, color: ACCENT.draw },
+    { label: "Clean sheets", value: cup?.cleanSheets ?? 0, color: ACCENT.loss },
+  ];
 
   const categories = [
     { label: "Principal", titles: player.titles, mvp: player.mvp, vices: player.runnerUps },
@@ -163,6 +174,21 @@ export default function PlayerProfileModal({
             <div className="text-xs uppercase tracking-wide text-faint">pontos</div>
           </div>
         </div>
+
+        {/* Estatísticas em copas — partidas, gols, assistências e clean sheets */}
+        <section className="animate-content-in mt-5" style={{ animationDelay: "100ms" }}>
+          <SectionTitle>Em copas (todas as súmulas)</SectionTitle>
+          <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
+            {cupCards.map((c) => (
+              <div key={c.label} className="rounded-md bg-panel px-3 py-3 text-center">
+                <div className="text-3xl font-extrabold" style={{ color: c.color }}>
+                  {c.value}
+                </div>
+                <div className="mt-0.5 text-sm font-medium text-faint">{c.label}</div>
+              </div>
+            ))}
+          </div>
+        </section>
 
         {/* Colunas de dados — tudo visível sem rolagem */}
         <div className="mt-5 grid grid-cols-1 gap-5 md:grid-cols-2 lg:grid-cols-3">
