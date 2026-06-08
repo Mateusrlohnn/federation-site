@@ -60,12 +60,17 @@ declare
   p_calleh uuid; p_knd uuid; p_mauro uuid; p_picole uuid;      -- Vasco
   missing text := '';
 begin
-  -- 1) TIMES (OFF) — cria só se ainda não existir; reaproveita se já existir.
-  insert into public.teams (name, active) values
-    ('Atlético Mineiro', false), ('Bahia', false), ('Cruzeiro', false),
-    ('Flamengo', false), ('Palmeiras', false), ('Paysandu', false),
-    ('Santos', false), ('São Paulo', false), ('Vasco Da Gama', false)
-  on conflict (name) do nothing;
+  -- 1) TIMES (OFF) — cria só se ainda não existir (por nome); reaproveita se já
+  --    existir. Sem 'on conflict' porque teams.name não é mais UNIQUE
+  --    (ver schema-teams-duplicate-names.sql).
+  insert into public.teams (name, active)
+  select v.name, false
+  from (values
+    ('Atlético Mineiro'), ('Bahia'), ('Cruzeiro'),
+    ('Flamengo'), ('Palmeiras'), ('Paysandu'),
+    ('Santos'), ('São Paulo'), ('Vasco Da Gama')
+  ) as v(name)
+  where not exists (select 1 from public.teams t where t.name = v.name);
 
   select id into atl from public.teams where name = 'Atlético Mineiro';
   select id into bah from public.teams where name = 'Bahia';

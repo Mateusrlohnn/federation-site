@@ -7,7 +7,7 @@
 -- ---------- TIMES ----------
 create table if not exists public.teams (
   id          uuid primary key default gen_random_uuid(),
-  name        text not null unique,
+  name        text not null,  -- pode repetir; a identidade do time é o id (ver schema-teams-duplicate-names.sql)
   active      boolean not null default true, -- ON aparece em Times; OFF = histórico
   titles      int  not null default 0,   -- Títulos
   runner_ups  int  not null default 0,   -- Vices
