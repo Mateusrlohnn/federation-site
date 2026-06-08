@@ -45,6 +45,9 @@ type Lite = { id: string; name: string };
 
 const eventEmoji = (t: MatchEventType) => MATCH_EVENT_TYPES.find((x) => x.type === t)?.emoji ?? "";
 
+// sentinela do W.O. duplo (os dois times faltaram -> 0×0). Não é id de time.
+const WO_BOTH = "__both__";
+
 export default function AdminTournamentsPage() {
   const supabase = createClient();
   const [list, setList] = useState<Tournament[]>([]);
@@ -70,6 +73,7 @@ export default function AdminTournamentsPage() {
   const [evOut, setEvOut] = useState(""); // substituição: jogador que sai
   const [evIn, setEvIn] = useState(""); // substituição: jogador que entra
   const [penPlayer, setPenPlayer] = useState(""); // cobrador na disputa de pênaltis
+  const [woTeam, setWoTeam] = useState<string | null>(null); // time beneficiado por W.O. (null = não é W.O.)
   const [newMessage, setNewMessage] = useState("");
   const [busy, setBusy] = useState(false);
   const [msg, setMsg] = useState("");
@@ -178,6 +182,7 @@ export default function AdminTournamentsPage() {
     setEvMinute("");
     setEvOut("");
     setEvIn("");
+    setWoTeam(null);
   }
 
   function startSumula() {
@@ -401,6 +406,15 @@ export default function AdminTournamentsPage() {
     setNewMatch({ ...m });
     setLiveMode(m.isLive);
     setScheduledMode(m.scheduled);
+    setWoTeam(
+      m.wo
+        ? m.homeScore === m.awayScore
+          ? WO_BOTH
+          : m.homeScore > m.awayScore
+            ? m.homeTeamId
+            : m.awayTeamId
+        : null,
+    );
     setEditorOpen(true);
     setEvPlayer("");
     setEvType("goal");
@@ -417,20 +431,28 @@ export default function AdminTournamentsPage() {
     setBusy(true);
     setErr("");
     const scheduled = scheduledMode;
-    const isLive = opts?.endLive || scheduled ? false : newMatch.isLive;
-    // Escalação obrigatória para qualquer súmula/partida ao vivo (não em agendadas).
+    const isWO = !!woTeam && !scheduled;
+    const isLive = opts?.endLive || scheduled || isWO ? false : newMatch.isLive;
+    // Validações: ambos os times sempre; escalação só quando NÃO é agendada nem W.O.
     if (!scheduled) {
-      const homeN = newMatch.lineups.filter((l) => l.teamId === newMatch.homeTeamId).length;
-      const awayN = newMatch.lineups.filter((l) => l.teamId === newMatch.awayTeamId).length;
       if (!newMatch.homeTeamId || !newMatch.awayTeamId)
         return finish("Selecione os dois times antes de salvar.");
-      if (homeN === 0 || awayN === 0)
-        return finish("Escale ao menos um jogador de cada time antes de salvar.");
+      if (!isWO) {
+        const homeN = newMatch.lineups.filter((l) => l.teamId === newMatch.homeTeamId).length;
+        const awayN = newMatch.lineups.filter((l) => l.teamId === newMatch.awayTeamId).length;
+        if (homeN === 0 || awayN === 0)
+          return finish("Escale ao menos um jogador de cada time antes de salvar.");
+      }
     }
-    // MVP só vale para partida encerrada (não ao vivo / não agendada)
-    const mvp = isLive || scheduled ? null : newMatch.mvpPlayerId;
-    // placar automático: gols normais/pênaltis + gol contra creditado ao adversário
-    const score = matchScore(newMatch.events, newMatch.homeTeamId, newMatch.awayTeamId);
+    // MVP só vale para partida encerrada (não ao vivo / não agendada / não W.O.)
+    const mvp = isLive || scheduled || isWO ? null : newMatch.mvpPlayerId;
+    // placar: W.O. = 3×0 para o beneficiado; senão automático pelos eventos.
+    const score = isWO
+      ? {
+          home: woTeam === newMatch.homeTeamId ? 3 : 0,
+          away: woTeam === newMatch.awayTeamId ? 3 : 0,
+        }
+      : matchScore(newMatch.events, newMatch.homeTeamId, newMatch.awayTeamId);
     const row = {
       tournament_id: draft.id,
       home_team_id: newMatch.homeTeamId,
@@ -439,6 +461,7 @@ export default function AdminTournamentsPage() {
       away_score: score.away,
       is_live: isLive,
       scheduled,
+      wo: isWO,
       mvp_player_id: mvp,
       played_at: newMatch.playedAt || null,
       notes: newMatch.notes || null,
@@ -454,9 +477,9 @@ export default function AdminTournamentsPage() {
       matchId = data.id as string;
     }
 
-    // sincroniza eventos (apaga e regrava)
+    // sincroniza eventos (apaga e regrava). W.O. não tem eventos.
     await supabase.from("match_events").delete().eq("match_id", matchId);
-    if (newMatch.events.length) {
+    if (!isWO && newMatch.events.length) {
       const { error: ee } = await supabase.from("match_events").insert(
         newMatch.events.map((e) => ({
           match_id: matchId,
@@ -470,9 +493,9 @@ export default function AdminTournamentsPage() {
       if (ee) return finish(ee.message);
     }
 
-    // sincroniza a escalação + notas (apaga e regrava)
+    // sincroniza a escalação + notas (apaga e regrava). W.O. não tem escalação.
     await supabase.from("match_lineups").delete().eq("match_id", matchId);
-    if (newMatch.lineups.length) {
+    if (!isWO && newMatch.lineups.length) {
       const { error: le } = await supabase.from("match_lineups").insert(
         newMatch.lineups.map((l) => ({
           match_id: matchId,
@@ -857,6 +880,46 @@ export default function AdminTournamentsPage() {
           </p>
         ) : (
           <>
+        {/* W.O. — time não compareceu (vence 3×0, sem escalação/eventos) */}
+        {bothTeams && (
+          <div className="flex flex-col gap-2 rounded-md border border-loss/30 bg-loss/5 p-2">
+            <label className="flex flex-col gap-1 text-[11px]">
+              <span className="font-bold uppercase tracking-wide text-faint">
+                W.O. — time não compareceu
+              </span>
+              <select
+                className={inputC}
+                value={woTeam ?? ""}
+                onChange={(e) => setWoTeam(e.target.value || null)}
+              >
+                <option value="">Não é W.O.</option>
+                {newMatch.homeTeamId && (
+                  <option value={newMatch.homeTeamId}>
+                    {teamName(newMatch.homeTeamId)} vence por W.O.
+                  </option>
+                )}
+                {newMatch.awayTeamId && (
+                  <option value={newMatch.awayTeamId}>
+                    {teamName(newMatch.awayTeamId)} vence por W.O.
+                  </option>
+                )}
+                <option value={WO_BOTH}>Ambos não compareceram (0×0)</option>
+              </select>
+            </label>
+            {woTeam && (
+              <span className="text-[10px] text-loss">
+                {woTeam === WO_BOTH ? (
+                  <>Será salvo como W.O. duplo: <b>0×0</b> (empate) — escalação e eventos ignorados.</>
+                ) : (
+                  <>
+                    Será salvo como W.O.: <b>{teamName(woTeam)}</b> vence 3×0 — escalação e eventos
+                    ignorados.
+                  </>
+                )}
+              </span>
+            )}
+          </div>
+        )}
         {/* escalação: quem jogou e em qual posição (só esses aparecem na súmula) */}
         <div className="flex flex-col gap-3 rounded-xl border border-white/5 bg-gradient-to-b from-panel to-base/30 p-3">
           <div className="flex items-center gap-2">

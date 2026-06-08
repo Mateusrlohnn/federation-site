@@ -401,6 +401,14 @@ export default function TournamentScreen({ data }: { data: ScreenData }) {
       mvpName: m.mvpPlayerId ? player(m.mvpPlayerId) : null,
       shootout:
         homeKicks.length || awayKicks.length ? { home: homeKicks, away: awayKicks } : null,
+      wo: m.wo
+        ? {
+            winner:
+              m.homeScore === m.awayScore
+                ? null
+                : team(m.homeScore > m.awayScore ? m.homeTeamId : m.awayTeamId),
+          }
+        : null,
     };
   }
 
@@ -827,6 +835,11 @@ export default function TournamentScreen({ data }: { data: ScreenData }) {
                           </span>
                         </span>
                         {m.playedAt && <span className="text-[10px] text-faint">{m.playedAt}</span>}
+                        {m.wo && (
+                          <span className="mt-0.5 rounded bg-loss/20 px-1.5 py-0.5 text-[9px] font-extrabold uppercase tracking-wide text-loss">
+                            W.O.
+                          </span>
+                        )}
                       </div>
                       <div className="flex flex-1 flex-col items-center gap-1.5 text-center">
                         <TeamLogo logo={logo(m.awayTeamId)} size={40} />

@@ -104,6 +104,8 @@ export type Match = {
   // Disputa de pênaltis (mata-mata): gols convertidos por lado. 0/0 = não houve.
   homePens: number;
   awayPens: number;
+  // W.O. (time não compareceu): placar já reflete o beneficiado (3×0).
+  wo: boolean;
 };
 
 /** Um gol conta na artilharia? (gol normal ou pênalti convertido — gol contra NÃO) */
@@ -191,6 +193,7 @@ export function emptyMatch(): Match {
     lineups: [],
     homePens: 0,
     awayPens: 0,
+    wo: false,
   };
 }
 
@@ -267,6 +270,7 @@ export function matchFromRow(r: Record<string, unknown>): Match {
     })),
     homePens,
     awayPens,
+    wo: r.wo === true,
   };
 }
 

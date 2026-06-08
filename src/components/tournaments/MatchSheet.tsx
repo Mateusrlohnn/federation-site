@@ -37,6 +37,8 @@ export type SheetData = {
   mvpName: string | null;
   // disputa de pênaltis (cobranças na ordem); null quando não houve
   shootout?: { home: SheetShootoutKick[]; away: SheetShootoutKick[] } | null;
+  // W.O.: presente quando foi W.O. winner = beneficiado (3×0); winner null = duplo (0×0).
+  wo?: { winner: string | null } | null;
 };
 
 // Ordem das posições para agrupar o elenco.
@@ -301,6 +303,22 @@ export default function MatchSheet({ sheet }: { sheet: SheetData }) {
                 <span className="font-bold text-gold">⭐ MVP: {sheet.mvpName}</span>
               )}
             </div>
+
+            {/* W.O. (se foi) */}
+            {sheet.wo && (
+              <div className="mt-4 rounded-lg border border-loss/30 bg-loss/10 p-3 text-center text-sm">
+                <span className="font-extrabold uppercase tracking-wide text-loss">W.O.</span>{" "}
+                <span className="text-white">
+                  {sheet.wo.winner ? (
+                    <>
+                      Vitória de <b>{sheet.wo.winner}</b> — adversário não compareceu (3×0).
+                    </>
+                  ) : (
+                    <>Os dois times não compareceram (0×0).</>
+                  )}
+                </span>
+              </div>
+            )}
 
             {/* decisão por pênaltis (se houve) */}
             <ShootoutBlock sheet={sheet} />
