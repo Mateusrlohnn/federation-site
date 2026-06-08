@@ -47,6 +47,8 @@ export type ScreenData = {
   logo: string;
   championName: string | null;
   championTeamId: string | null;
+  runnerUpName: string | null;
+  runnerUpTeamId: string | null;
   organizerName: string | null;
   format: TournamentFormat | null;
   groupCount: number | null;
@@ -59,6 +61,7 @@ export type ScreenData = {
   teamNames: Record<string, string>;
   teamLogos: Record<string, string>;
   teamRosters: Record<string, { playerId: string; position: Position | null; active: boolean }[]>;
+  awards: Record<string, string>; // award_key -> player_id (pódio atribuído pelo admin)
 };
 
 const MEDALS = ["#ffb300", "#c7ccd1", "#cd7f32"]; // ouro, prata, bronze
@@ -179,6 +182,103 @@ function PlayerAvatar({
         style={{ width: size, height: size * 1.25 }}
       />
     </span>
+  );
+}
+
+type AwardPerson = { name: string; nick?: string } | null;
+
+/** Avatar "surpresa" (top ainda não divulgado). */
+function MysteryAvatar({ size }: { size: number }) {
+  return (
+    <span
+      className="flex shrink-0 items-center justify-center overflow-hidden rounded-xl bg-base/60 ring-1 ring-dashed ring-white/15"
+      style={{ width: size, height: size }}
+    >
+      <span className="text-2xl font-black text-faint">?</span>
+    </span>
+  );
+}
+
+/** Uma vaga do pódio (1º/2º/3º) com pedestal colorido; vazio = "Em breve". */
+function PodiumSpot({ place, person }: { place: number; person: AwardPerson }) {
+  const color = MEDALS[place - 1] ?? "#8a8a93";
+  const avatarSize = place === 1 ? 60 : 46;
+  const barH = place === 1 ? 56 : place === 2 ? 40 : 30;
+  return (
+    <div className="flex w-1/3 flex-col items-center">
+      {person ? (
+        <PlayerAvatar name={person.name} nick={person.nick} size={avatarSize} />
+      ) : (
+        <MysteryAvatar size={avatarSize} />
+      )}
+      <span
+        className={`mt-1 w-full truncate px-0.5 text-center text-[11px] font-bold ${person ? "" : "text-faint"}`}
+        title={person ? person.name : "Em breve…"}
+      >
+        {person ? person.name : "Em breve…"}
+      </span>
+      <div
+        className="mt-1 flex w-full items-start justify-center rounded-t-md"
+        style={{ height: barH, background: `linear-gradient(180deg, ${color}, ${color}22)` }}
+      >
+        <span className="mt-0.5 text-sm font-black text-[#1a1a1e]">{place}</span>
+      </div>
+    </div>
+  );
+}
+
+/** Pódio de uma posição (1º no meio e mais alto). */
+function PositionPodium({
+  label,
+  spots,
+}: {
+  label: string;
+  spots: { place: number; person: AwardPerson }[];
+}) {
+  const order = [spots[1], spots[0], spots[2]]; // 2º, 1º, 3º
+  return (
+    <div className="rounded-xl bg-card p-3 ring-1 ring-white/5">
+      <div className="mb-3 text-center text-xs font-extrabold uppercase tracking-wide text-faint">
+        {label}
+      </div>
+      <div className="flex items-end justify-center gap-1.5">
+        {order.map((s) => (
+          <PodiumSpot key={s.place} place={s.place} person={s.person} />
+        ))}
+      </div>
+    </div>
+  );
+}
+
+/** Card de prêmio especial (Melhor da Copa, etc.). Só aparece quando atribuído. */
+function SpecialAwardCard({
+  label,
+  icon,
+  color,
+  person,
+}: {
+  label: string;
+  icon: Parameters<typeof Icon>[0]["name"];
+  color: string;
+  person: AwardPerson;
+}) {
+  if (!person) return null;
+  return (
+    <div
+      className="flex items-center gap-3 rounded-xl bg-card p-3 ring-1 ring-white/5"
+      style={{ boxShadow: `inset 3px 0 0 0 ${color}` }}
+    >
+      <PlayerAvatar name={person.name} nick={person.nick} size={50} />
+      <div className="flex min-w-0 flex-col">
+        <span
+          className="flex items-center gap-1 text-[10px] font-extrabold uppercase tracking-wide"
+          style={{ color }}
+        >
+          <Icon name={icon} /> {label}
+        </span>
+        <span className="truncate text-sm font-bold">{person.name}</span>
+      </div>
+    </div>
   );
 }
 
@@ -466,13 +566,14 @@ export default function TournamentScreen({ data }: { data: ScreenData }) {
   const assists = computeTopAssists(data.matches);
   const totalGoals = scorers.reduce((s, x) => s + x.goals, 0);
 
-  const finished = data.status === "Finalizado";
-  const topByPosition = POSITIONS.map((pos) => ({
-    pos,
-    players: scorers
-      .filter((s) => data.playerPositions[s.playerId] === pos.key && s.goals > 0)
-      .slice(0, 3),
-  })).filter((g) => g.players.length > 0);
+  // Pódio atribuído pelo admin: jogador de um prêmio (ou null = "Em breve").
+  const awardPlayer = (key: string) =>
+    data.awards[key] ? { name: player(data.awards[key]), nick: nickOf(data.awards[key]) } : null;
+  const specialAwards = [
+    { key: "best_player", label: "Melhor da Copa", icon: "trophy" as const, color: ACCENT.gold },
+    { key: "best_gk", label: "Melhor Goleiro", icon: "shield" as const, color: ACCENT.draw },
+    { key: "revelation", label: "Revelação", icon: "futbol" as const, color: ACCENT.win },
+  ].map((a) => ({ ...a, player: awardPlayer(a.key) }));
 
   const hud = [
     { icon: "shield" as const, color: ACCENT.draw, value: data.teams.length, label: "Times" },
@@ -650,6 +751,11 @@ export default function TournamentScreen({ data }: { data: ScreenData }) {
               {data.championName && (
                 <span className="flex items-center gap-1 rounded-md bg-gold px-2.5 py-0.5 text-xs font-bold text-[#1a1a1e]">
                   <Icon name="trophy" /> Campeão: {data.championName}
+                </span>
+              )}
+              {data.runnerUpName && (
+                <span className="flex items-center gap-1 rounded-md bg-panel px-2.5 py-0.5 text-xs font-bold text-faint ring-1 ring-white/10">
+                  🥈 Vice: {data.runnerUpName}
                 </span>
               )}
             </div>
@@ -897,41 +1003,40 @@ export default function TournamentScreen({ data }: { data: ScreenData }) {
           <AllSheetsButton sections={allSheetSections} />
         </section>
 
-        {/* TOP POR POSIÇÃO (copa encerrada) */}
-        {finished && topByPosition.length > 0 && (
-          <section>
-            <SectionHeader icon="trophy" color={ACCENT.gold} title="Craques por posição" hint="por gols" />
-            <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
-              {topByPosition.map(({ pos, players }) => (
-                <div key={pos.key} className="rounded-2xl bg-panel/50 p-4">
-                  <div
-                    className="mb-3 inline-flex items-center justify-center rounded-lg bg-gold px-2.5 py-1 text-xs font-extrabold text-[#1a1a1e]"
-                    title={pos.label}
-                  >
-                    {pos.sigla}
-                  </div>
-                  <ul className="flex flex-col gap-2.5">
-                    {players.map((s, i) => (
-                      <li key={s.playerId} className="flex items-center gap-2">
-                        <span
-                          className="w-4 shrink-0 text-center text-sm"
-                          style={{ color: MEDALS[i] }}
-                        >
-                          {i === 0 ? "🥇" : i === 1 ? "🥈" : "🥉"}
-                        </span>
-                        <PlayerAvatar name={player(s.playerId)} nick={nickOf(s.playerId)} size={36} />
-                        <span className="min-w-0 flex-1 truncate text-sm font-medium">
-                          {player(s.playerId)}
-                        </span>
-                        <span className="shrink-0 text-sm font-extrabold text-gold">{s.goals}</span>
-                      </li>
-                    ))}
-                  </ul>
-                </div>
+        {/* PÓDIO DA COPA (atribuído pelo admin; vazio = "Em breve") */}
+        <section>
+          <SectionHeader
+            icon="trophy"
+            color={ACCENT.gold}
+            title="Pódio da copa"
+            hint="top 1 · 2 · 3 por posição"
+          />
+          <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+            {POSITIONS.map((pos) => (
+              <PositionPodium
+                key={pos.key}
+                label={pos.label}
+                spots={[1, 2, 3].map((place) => ({
+                  place,
+                  person: awardPlayer(`${pos.key}_${place}`),
+                }))}
+              />
+            ))}
+          </div>
+          {specialAwards.some((a) => a.player) && (
+            <div className="mt-3 grid gap-3 sm:grid-cols-3">
+              {specialAwards.map((a) => (
+                <SpecialAwardCard
+                  key={a.key}
+                  label={a.label}
+                  icon={a.icon}
+                  color={a.color}
+                  person={a.player}
+                />
               ))}
             </div>
-          </section>
-        )}
+          )}
+        </section>
 
         {/* TIMES PARTICIPANTES (clicável → estatísticas do time) */}
         {data.teams.length > 0 && (

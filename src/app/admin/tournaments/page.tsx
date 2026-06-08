@@ -62,6 +62,7 @@ export default function AdminTournamentsPage() {
   const [draft, setDraft] = useState<Tournament | null>(null);
   const [matches, setMatches] = useState<Match[]>([]);
   const [messages, setMessages] = useState<TournamentMessage[]>([]);
+  const [awards, setAwards] = useState<Record<string, string>>({}); // award_key -> player_id
   const [newMatch, setNewMatch] = useState<Match>(emptyMatch());
   const [editingMatchId, setEditingMatchId] = useState<string | null>(null);
   const [editorOpen, setEditorOpen] = useState(false);
@@ -128,7 +129,7 @@ export default function AdminTournamentsPage() {
 
   const loadSub = useCallback(
     async (tid: string) => {
-      const [m, ms] = await Promise.all([
+      const [m, ms, aw] = await Promise.all([
         supabase
           .from("matches")
           .select(
@@ -141,6 +142,7 @@ export default function AdminTournamentsPage() {
           .select("*")
           .eq("tournament_id", tid)
           .order("created_at", { ascending: false }),
+        supabase.from("tournament_awards").select("award_key, player_id").eq("tournament_id", tid),
       ]);
       setMatches(!m.error && m.data ? m.data.map(matchFromRow) : []);
       setMessages(
@@ -152,6 +154,12 @@ export default function AdminTournamentsPage() {
             }))
           : [],
       );
+      const awMap: Record<string, string> = {};
+      if (!aw.error && aw.data)
+        (aw.data as { award_key: string; player_id: string }[]).forEach((x) => {
+          awMap[x.award_key] = x.player_id;
+        });
+      setAwards(awMap);
     },
     [supabase],
   );
@@ -168,6 +176,7 @@ export default function AdminTournamentsPage() {
     setDraft(t ? { ...t } : null);
     setMatches([]);
     setMessages([]);
+    setAwards({});
     if (t?.id) loadSub(t.id);
   }
 
@@ -216,10 +225,14 @@ export default function AdminTournamentsPage() {
     setErr("");
     setMsg("");
     let tid = draft.id;
-    // só grava campeão se o time ainda for participante
+    // só grava campeão/vice se o time ainda for participante
     const champion =
       draft.championTeamId && draft.teamIds.includes(draft.championTeamId)
         ? draft.championTeamId
+        : null;
+    const runnerUp =
+      draft.runnerUpTeamId && draft.teamIds.includes(draft.runnerUpTeamId)
+        ? draft.runnerUpTeamId
         : null;
     const row = {
       name: draft.name.trim(),
@@ -227,6 +240,7 @@ export default function AdminTournamentsPage() {
       image_url: draft.imageUrl?.trim() || null,
       logo_url: draft.logoUrl?.trim() || null,
       champion_team_id: champion,
+      runner_up_team_id: runnerUp,
       organizer_id: draft.organizerId || null,
       format: draft.format || null,
       group_count: draft.groupCount || null,
@@ -725,6 +739,39 @@ export default function AdminTournamentsPage() {
     await loadLists();
   }
 
+  // pódio: define/limpa um prêmio no estado local
+  function setAward(key: string, playerId: string) {
+    setAwards((a) => {
+      const n = { ...a };
+      if (playerId) n[key] = playerId;
+      else delete n[key];
+      return n;
+    });
+  }
+
+  // pódio: regrava todos os prêmios da copa (apaga e insere os preenchidos)
+  async function saveAwards() {
+    if (!draft?.id) return;
+    setBusy(true);
+    setErr("");
+    setMsg("");
+    const tid = draft.id;
+    await supabase.from("tournament_awards").delete().eq("tournament_id", tid);
+    const rows = Object.entries(awards)
+      .filter(([, pid]) => pid)
+      .map(([award_key, player_id]) => ({ tournament_id: tid, award_key, player_id }));
+    if (rows.length) {
+      const { error } = await supabase.from("tournament_awards").insert(rows);
+      if (error) {
+        setBusy(false);
+        return setErr(error.message);
+      }
+    }
+    setBusy(false);
+    setMsg("Pódio salvo.");
+    await loadSub(tid);
+  }
+
   async function addMessage() {
     if (!draft?.id || !newMessage.trim()) return;
     setBusy(true);
@@ -819,8 +866,9 @@ export default function AdminTournamentsPage() {
     // escalação obrigatória para súmula/partida ao vivo (não em agendadas)
     const homeLineupN = newMatch.lineups.filter((l) => l.teamId === newMatch.homeTeamId).length;
     const awayLineupN = newMatch.lineups.filter((l) => l.teamId === newMatch.awayTeamId).length;
+    // W.O. não exige escalação (a partida não aconteceu).
     const lineupMissing =
-      !scheduledMode && bothTeams && (homeLineupN === 0 || awayLineupN === 0);
+      !scheduledMode && !woTeam && bothTeams && (homeLineupN === 0 || awayLineupN === 0);
     return (
       <div className="mt-3 flex flex-col gap-2 border-t border-white/5 pt-3">
         <div className="grid grid-cols-2 items-end gap-2 sm:grid-cols-5">
@@ -1633,6 +1681,33 @@ export default function AdminTournamentsPage() {
                   )}
                 </label>
 
+                {/* VICE-CAMPEÃO */}
+                <label className="flex flex-col gap-1 text-xs">
+                  <span className="font-bold">🥈 Time vice-campeão</span>
+                  {draft.teamIds.length === 0 ? (
+                    <span className="text-faint">
+                      Adicione times participantes para definir o vice.
+                    </span>
+                  ) : (
+                    <select
+                      className={inputC}
+                      value={draft.runnerUpTeamId ?? ""}
+                      onChange={(e) =>
+                        setDraft({ ...draft, runnerUpTeamId: e.target.value || null })
+                      }
+                    >
+                      <option value="">— Sem vice / não definido —</option>
+                      {allTeams
+                        .filter((t) => draft.teamIds.includes(t.id) && t.id !== draft.championTeamId)
+                        .map((t) => (
+                          <option key={t.id} value={t.id}>
+                            {t.name}
+                          </option>
+                        ))}
+                    </select>
+                  )}
+                </label>
+
                 <div className="flex justify-end gap-2 border-t border-white/5 pt-3">
                   {draft.id && (
                     <button
@@ -1763,6 +1838,73 @@ export default function AdminTournamentsPage() {
                       />
                     </div>
                   )}
+
+                  {/* PÓDIO / PRÊMIOS */}
+                  <div className="rounded-lg bg-card p-4">
+                    <h3 className="mb-1 text-sm font-bold">🏆 Pódio / Prêmios</h3>
+                    <p className="mb-3 text-[11px] text-faint">
+                      Top 1/2/3 por posição + especiais (opcionais). Vazio = aparece como “Em breve”
+                      na página da copa.
+                    </p>
+                    <div className="grid gap-3 sm:grid-cols-2">
+                      {POSITIONS.map((pos) => (
+                        <div key={pos.key} className="rounded-md bg-panel p-2">
+                          <div className="mb-1 text-[11px] font-bold uppercase tracking-wide text-faint">
+                            {pos.label}
+                          </div>
+                          <div className="flex flex-col gap-1.5">
+                            {[1, 2, 3].map((place) => (
+                              <label key={place} className="flex items-center gap-2 text-[11px]">
+                                <span className="w-5 shrink-0 font-bold">{place}º</span>
+                                <select
+                                  className={inputC}
+                                  value={awards[`${pos.key}_${place}`] ?? ""}
+                                  onChange={(e) => setAward(`${pos.key}_${place}`, e.target.value)}
+                                >
+                                  <option value="">—</option>
+                                  {allPlayers.map((p) => (
+                                    <option key={p.id} value={p.id}>
+                                      {p.name}
+                                    </option>
+                                  ))}
+                                </select>
+                              </label>
+                            ))}
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                    <div className="mt-3 grid gap-2 sm:grid-cols-3">
+                      {[
+                        { k: "best_player", l: "Melhor da Copa" },
+                        { k: "best_gk", l: "Melhor Goleiro" },
+                        { k: "revelation", l: "Revelação" },
+                      ].map((s) => (
+                        <label key={s.k} className="flex flex-col gap-1 text-[11px]">
+                          {s.l}
+                          <select
+                            className={inputC}
+                            value={awards[s.k] ?? ""}
+                            onChange={(e) => setAward(s.k, e.target.value)}
+                          >
+                            <option value="">—</option>
+                            {allPlayers.map((p) => (
+                              <option key={p.id} value={p.id}>
+                                {p.name}
+                              </option>
+                            ))}
+                          </select>
+                        </label>
+                      ))}
+                    </div>
+                    <button
+                      onClick={saveAwards}
+                      disabled={busy}
+                      className="mt-3 rounded-md bg-gold px-4 py-2 text-xs font-bold text-[#1a1a1e] transition-transform hover:scale-[1.02] disabled:opacity-50"
+                    >
+                      Salvar pódio
+                    </button>
+                  </div>
 
                   {/* MENSAGENS */}
                   <div className="rounded-lg bg-card p-4">

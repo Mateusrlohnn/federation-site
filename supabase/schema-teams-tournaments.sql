@@ -36,6 +36,7 @@ create table if not exists public.tournaments (
   name             text not null,
   status           text not null default 'Em andamento', -- Em andamento | Finalizado | Em breve
   champion_team_id uuid references public.teams(id) on delete set null,   -- time campeão (opcional)
+  runner_up_team_id uuid references public.teams(id) on delete set null,  -- time vice-campeão (opcional)
   organizer_id     uuid references public.players(id) on delete set null, -- organizador (opcional)
   logo_url         text,  -- foto/escudo do torneio (quadrada); image_url é o banner (larga)
   format           text check (format in ('pontos_corridos', 'suico', 'grupos_mata_mata', 'mata_mata')),

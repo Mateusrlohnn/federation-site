@@ -16,7 +16,7 @@ async function getData(id: string): Promise<ScreenData | null> {
       supabase
         .from("tournaments")
         .select(
-          "*, tournament_teams(team_id, seed, group_label), matches(*, match_events(player_id, team_id, type, minute, secondary_player_id), match_lineups(player_id, team_id, position, is_starter, rating)), tournament_messages(body)",
+          "*, tournament_teams(team_id, seed, group_label), matches(*, match_events(player_id, team_id, type, minute, secondary_player_id), match_lineups(player_id, team_id, position, is_starter, rating)), tournament_messages(body), tournament_awards(award_key, player_id)",
         )
         .eq("id", id)
         .single(),
@@ -74,6 +74,15 @@ async function getData(id: string): Promise<ScreenData | null> {
         group: (x.group_label as string) ?? null,
       }));
     const championTeamId = (r.champion_team_id as string) ?? null;
+    const runnerUpTeamId = (r.runner_up_team_id as string) ?? null;
+
+    // prêmios (pódio): award_key -> player_id
+    const awards: Record<string, string> = {};
+    ((r.tournament_awards as { award_key: string; player_id: string }[] | undefined) ?? []).forEach(
+      (x) => {
+        awards[x.award_key] = x.player_id;
+      },
+    );
 
     return {
       id: r.id as string,
@@ -83,6 +92,8 @@ async function getData(id: string): Promise<ScreenData | null> {
       logo: (r.logo_url as string) ?? "",
       championTeamId,
       championName: championTeamId ? teamNames[championTeamId] ?? null : null,
+      runnerUpTeamId,
+      runnerUpName: runnerUpTeamId ? teamNames[runnerUpTeamId] ?? null : null,
       organizerName: r.organizer_id ? playerNames[r.organizer_id as string] ?? null : null,
       format: (r.format as TournamentFormat) ?? null,
       groupCount: r.group_count != null ? Number(r.group_count) : null,
@@ -95,6 +106,7 @@ async function getData(id: string): Promise<ScreenData | null> {
       teamNames,
       teamLogos,
       teamRosters,
+      awards,
     };
   } catch {
     return null;

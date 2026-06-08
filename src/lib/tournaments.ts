@@ -18,6 +18,7 @@ export type Tournament = {
   teamIds: string[];
   playerIds: string[];
   championTeamId: string | null; // time campeão (opcional)
+  runnerUpTeamId: string | null; // time vice-campeão (opcional)
   organizerId: string | null; // organizador (opcional)
   format: TournamentFormat | null; // formato do campeonato (opcional)
   groupCount: number | null; // nº de grupos (grupos_mata_mata)
@@ -172,6 +173,7 @@ export function emptyTournament(): Tournament {
     teamIds: [],
     playerIds: [],
     championTeamId: null,
+    runnerUpTeamId: null,
     organizerId: null,
     format: null,
     groupCount: null,
@@ -209,6 +211,7 @@ export function tournamentFromRow(r: Record<string, unknown>): Tournament {
     teamIds: teams.map((x) => x.team_id),
     playerIds: players.map((x) => x.player_id),
     championTeamId: (r.champion_team_id as string) ?? null,
+    runnerUpTeamId: (r.runner_up_team_id as string) ?? null,
     organizerId: (r.organizer_id as string) ?? null,
     format: (r.format as TournamentFormat) ?? null,
     groupCount: r.group_count != null ? Number(r.group_count) : null,
