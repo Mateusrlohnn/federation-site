@@ -189,6 +189,8 @@ export function emptyMatch(): Match {
     notes: "",
     events: [],
     lineups: [],
+    homePens: 0,
+    awayPens: 0,
   };
 }
 
