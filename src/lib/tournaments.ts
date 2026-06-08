@@ -107,6 +107,8 @@ export type Match = {
   awayPens: number;
   // W.O. (time não compareceu): placar já reflete o beneficiado (3×0).
   wo: boolean;
+  // momento do cadastro — desempata a ordem cronológica quando não há played_at.
+  createdAt: string | null;
 };
 
 /** Um gol conta na artilharia? (gol normal ou pênalti convertido — gol contra NÃO) */
@@ -196,6 +198,7 @@ export function emptyMatch(): Match {
     homePens: 0,
     awayPens: 0,
     wo: false,
+    createdAt: null,
   };
 }
 
@@ -274,6 +277,7 @@ export function matchFromRow(r: Record<string, unknown>): Match {
     homePens,
     awayPens,
     wo: r.wo === true,
+    createdAt: (r.created_at as string) ?? null,
   };
 }
 

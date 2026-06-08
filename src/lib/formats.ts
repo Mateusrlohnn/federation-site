@@ -47,6 +47,8 @@ export type MatchLike = {
   // disputa de pênaltis (mata-mata) — usada só para desempatar o tempo normal
   homePens?: number | null;
   awayPens?: number | null;
+  // cadastro (desempata a ordem cronológica quando não há playedAt)
+  createdAt?: string | null;
 };
 
 /** Uma partida só conta para a tabela quando finalizada (nem agendada nem ao vivo). */

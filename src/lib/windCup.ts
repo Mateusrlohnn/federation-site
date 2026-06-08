@@ -49,7 +49,13 @@ function finalsByDate(matches: MatchLike[]): MatchLike[] {
   return matches
     .filter((m) => isFinal(m))
     .map((m, i) => ({ m, i }))
-    .sort((a, b) => (a.m.playedAt ?? "").localeCompare(b.m.playedAt ?? "") || a.i - b.i)
+    .sort(
+      (a, b) =>
+        (a.m.playedAt ?? "").localeCompare(b.m.playedAt ?? "") ||
+        // sem data: ordem de cadastro (liga lançada antes dos playoffs)
+        (a.m.createdAt ?? "").localeCompare(b.m.createdAt ?? "") ||
+        a.i - b.i,
+    )
     .map((x) => x.m);
 }
 
