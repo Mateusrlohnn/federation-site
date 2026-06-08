@@ -32,7 +32,7 @@ create table if not exists public.match_events (
   -- substituição: jogador que SAI (player_id guarda quem entra)
   secondary_player_id uuid references public.players(id) on delete set null,
   type      text not null check (
-    type in ('goal', 'own_goal', 'penalty_goal', 'penalty_miss', 'assist', 'yellow_card', 'red_card', 'substitution')
+    type in ('goal', 'own_goal', 'penalty_goal', 'penalty_miss', 'assist', 'yellow_card', 'red_card', 'substitution', 'shootout_goal', 'shootout_miss')
   ),
   minute    int,
   created_at timestamptz not null default now()

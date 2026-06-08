@@ -44,6 +44,9 @@ export type MatchLike = {
   scheduled: boolean;
   isLive: boolean;
   playedAt?: string | null;
+  // disputa de pênaltis (mata-mata) — usada só para desempatar o tempo normal
+  homePens?: number | null;
+  awayPens?: number | null;
 };
 
 /** Uma partida só conta para a tabela quando finalizada (nem agendada nem ao vivo). */
@@ -258,6 +261,8 @@ export type BracketMatch = {
   away: SlotTeam;
   homeScore: number | null;
   awayScore: number | null;
+  homePens?: number | null; // placar da disputa de pênaltis (quando o tempo normal empata)
+  awayPens?: number | null;
   winner: string | null;
 };
 export type BracketRound = { label: string; matches: BracketMatch[] };
@@ -289,7 +294,12 @@ export function knockoutWinner(matches: MatchLike[], a: string, b: string): stri
     if ((h === a && aw === b) || (h === b && aw === a)) {
       if (m.homeScore > m.awayScore) return h;
       if (m.awayScore > m.homeScore) return aw;
-      return null; // empate => indefinido
+      // empate no tempo normal → decide pela disputa de pênaltis (se houver)
+      const hp = m.homePens ?? 0;
+      const ap = m.awayPens ?? 0;
+      if (hp > ap) return h;
+      if (ap > hp) return aw;
+      return null; // empate e sem pênaltis => indefinido
     }
   }
   return null;
@@ -337,6 +347,8 @@ export function buildKnockout(
       let winner: string | null = null;
       let homeScore: number | null = null;
       let awayScore: number | null = null;
+      let homePens: number | null = null;
+      let awayPens: number | null = null;
 
       if (home === BYE && away && away !== BYE) winner = away;
       else if (away === BYE && home && home !== BYE) winner = home;
@@ -345,6 +357,8 @@ export function buildKnockout(
         if (m) {
           homeScore = m.homeTeamId === home ? m.homeScore : m.awayScore;
           awayScore = m.homeTeamId === home ? m.awayScore : m.homeScore;
+          homePens = m.homeTeamId === home ? m.homePens ?? null : m.awayPens ?? null;
+          awayPens = m.homeTeamId === home ? m.awayPens ?? null : m.homePens ?? null;
           winner = knockoutWinner(matches, home, away);
         }
       }
@@ -353,6 +367,8 @@ export function buildKnockout(
         away: away === BYE ? BYE : away,
         homeScore,
         awayScore,
+        homePens,
+        awayPens,
         winner,
       });
       winners.push(winner);
@@ -396,16 +412,20 @@ export function buildLibertadoresKnockout(
   const mk = (home: SlotTeam, away: SlotTeam): BracketMatch => {
     let homeScore: number | null = null;
     let awayScore: number | null = null;
+    let homePens: number | null = null;
+    let awayPens: number | null = null;
     let winner: string | null = null;
     if (home && away && home !== BYE && away !== BYE) {
       const m = findMatch(matches, home, away);
       if (m) {
         homeScore = m.homeTeamId === home ? m.homeScore : m.awayScore;
         awayScore = m.homeTeamId === home ? m.awayScore : m.homeScore;
+        homePens = m.homeTeamId === home ? m.homePens ?? null : m.awayPens ?? null;
+        awayPens = m.homeTeamId === home ? m.awayPens ?? null : m.homePens ?? null;
         winner = knockoutWinner(matches, home, away);
       }
     }
-    return { home, away, homeScore, awayScore, winner };
+    return { home, away, homeScore, awayScore, homePens, awayPens, winner };
   };
 
   const qf1 = mk(A2, B3);
@@ -730,4 +750,98 @@ export function generateSwissPairs(
     }
   }
   return pairings;
+}
+
+// ---------------------------------------------------------------------------
+// FASES DO TORNEIO — rótulo de cada confronto conforme o formato (para listar
+// todas as súmulas agrupadas: "Rodada 1", "Quartas de final", etc.).
+// Devolve fases ordenadas; cada uma com os PARES de times (ids) esperados.
+// O chamador casa cada par com a partida real.
+// ---------------------------------------------------------------------------
+export type PhaseGroup = { label: string; pairs: { a: string; b: string }[] };
+
+export function tournamentPhases(
+  format: TournamentFormat | null,
+  teams: { id: string; seed?: number | null; group?: string | null }[],
+  matches: MatchLike[],
+  groupCount?: number | null,
+): PhaseGroup[] {
+  const teamIds = teams.map((t) => t.id);
+  const phases: PhaseGroup[] = [];
+  const pushFixtures = (rounds: FixtureRound[], prefix = "") => {
+    for (const r of rounds) {
+      const pairs = r.matches.map((m) => ({ a: m.home, b: m.away }));
+      if (pairs.length) phases.push({ label: prefix + r.label, pairs });
+    }
+  };
+  const pushBracket = (rounds: BracketRound[]) => {
+    for (const r of rounds) {
+      const pairs = r.matches
+        .filter((m) => m.home && m.away && m.home !== BYE && m.away !== BYE)
+        .map((m) => ({ a: m.home as string, b: m.away as string }));
+      if (pairs.length) phases.push({ label: r.label, pairs });
+    }
+  };
+  const groupsOf = (): { label: string; teamIds: string[] }[] => {
+    const labeled = teams.filter((t) => t.group);
+    if (labeled.length) {
+      const map = new Map<string, string[]>();
+      for (const t of teams) {
+        const k = t.group ?? "Sem grupo";
+        if (!map.has(k)) map.set(k, []);
+        map.get(k)!.push(t.id);
+      }
+      return [...map.entries()]
+        .sort((a, b) => a[0].localeCompare(b[0]))
+        .map(([label, ids]) => ({ label, teamIds: ids }));
+    }
+    return splitGroups(teamIds, groupCount ?? undefined).map((g) => ({
+      label: g.label,
+      teamIds: g.teamIds,
+    }));
+  };
+
+  if (format === "pontos_corridos") {
+    pushFixtures(roundRobinFixtures(teamIds, matches));
+  } else if (format === "grupos_mata_mata" || format === "libertadores") {
+    const groups = groupsOf();
+    for (const g of groups) pushFixtures(roundRobinFixtures(g.teamIds, matches), `${g.label} · `);
+    if (format === "libertadores") {
+      const standings = groups.map((g) => computeStandings(g.teamIds, matches).map((r) => r.teamId));
+      pushBracket(buildLibertadoresKnockout(standings, matches));
+    } else {
+      const firsts: string[] = [];
+      const seconds: string[] = [];
+      for (const g of groups) {
+        const s = computeStandings(g.teamIds, matches);
+        if (s[0]) firsts.push(s[0].teamId);
+        if (s[1]) seconds.push(s[1].teamId);
+      }
+      const seeds = [...firsts, ...seconds];
+      if (seeds.length >= 2) pushBracket(buildKnockout(seeds, matches));
+    }
+  } else if (format === "mata_mata") {
+    const standings = computeStandings(teamIds, matches);
+    const seeded = teams.some((t) => t.seed != null)
+      ? teamIds
+      : standings.some((r) => r.played > 0)
+        ? standings.map((r) => r.teamId)
+        : teamIds;
+    pushBracket(buildKnockout(seeded, matches));
+  } else if (format === "suico") {
+    const byRecord = [...swissMatchesByRecord(teamIds, matches).entries()].sort((x, y) => {
+      const [xw, xl] = x[0].split("-").map(Number);
+      const [yw, yl] = y[0].split("-").map(Number);
+      return xw + xl - (yw + yl) || yw - xw;
+    });
+    for (const [rec, ms] of byRecord) {
+      const [w, l] = rec.split("-").map(Number);
+      const pairs = ms
+        .filter((m) => m.home && m.away && m.home !== BYE && m.away !== BYE)
+        .map((m) => ({ a: m.home as string, b: m.away as string }));
+      if (pairs.length) phases.push({ label: `Rodada ${w + l + 1} (${w}V-${l}D)`, pairs });
+    }
+  }
+  // wind_cup e formato nulo: sem fases derivadas aqui (caem em "Demais jogos").
+  return phases;
 }

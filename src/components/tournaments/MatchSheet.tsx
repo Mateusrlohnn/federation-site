@@ -29,11 +29,14 @@ export type SheetPlayer = {
   subOutMinute: number | null;
 };
 export type SheetSide = { name: string; logo: string; score: number; lineup: SheetPlayer[] };
+export type SheetShootoutKick = { name: string; nick?: string; scored: boolean };
 export type SheetData = {
   home: SheetSide;
   away: SheetSide;
   playedAt: string | null;
   mvpName: string | null;
+  // disputa de pênaltis (cobranças na ordem); null quando não houve
+  shootout?: { home: SheetShootoutKick[]; away: SheetShootoutKick[] } | null;
 };
 
 // Ordem das posições para agrupar o elenco.
@@ -184,6 +187,62 @@ function Lineup({ side }: { side: SheetSide }) {
   );
 }
 
+function ShootoutKick({ k }: { k: SheetShootoutKick }) {
+  return (
+    <span
+      title={`${k.name} — ${k.scored ? "converteu" : "perdeu"}`}
+      className="inline-flex h-6 w-6 cursor-default items-center justify-center"
+    >
+      {k.scored ? (
+        <span className="text-base">⚽</span>
+      ) : (
+        <span className="relative inline-flex items-center justify-center">
+          <span className="text-base">🔴</span>
+          <span className="absolute inset-0 flex items-center justify-center text-[11px] font-extrabold text-white">
+            ✕
+          </span>
+        </span>
+      )}
+    </span>
+  );
+}
+
+function ShootoutBlock({ sheet }: { sheet: SheetData }) {
+  const s = sheet.shootout;
+  if (!s) return null;
+  const hg = s.home.filter((k) => k.scored).length;
+  const ag = s.away.filter((k) => k.scored).length;
+  const Row = ({ name, kicks }: { name: string; kicks: SheetShootoutKick[] }) => (
+    <div className="flex items-center gap-2">
+      <span className="w-28 shrink-0 truncate text-sm font-semibold sm:w-40">{name}</span>
+      <span className="flex flex-wrap items-center gap-0.5">
+        {kicks.length ? (
+          kicks.map((k, i) => <ShootoutKick key={i} k={k} />)
+        ) : (
+          <span className="text-xs text-faint">—</span>
+        )}
+      </span>
+    </div>
+  );
+  return (
+    <div className="mt-6 rounded-lg bg-panel/40 p-3">
+      <div className="mb-2 flex items-center gap-2 text-xs font-bold uppercase tracking-wide text-faint">
+        Decisão por pênaltis
+        <span className="font-mono text-sm text-white">
+          {hg} × {ag}
+        </span>
+      </div>
+      <div className="flex flex-col gap-2">
+        <Row name={sheet.home.name} kicks={s.home} />
+        <Row name={sheet.away.name} kicks={s.away} />
+      </div>
+      <p className="mt-2 text-[10px] text-faint">
+        ⚽ convertido · 🔴✕ perdido — passe o mouse para ver o cobrador.
+      </p>
+    </div>
+  );
+}
+
 export default function MatchSheet({ sheet }: { sheet: SheetData }) {
   const [open, setOpen] = useState(false);
 
@@ -243,10 +302,127 @@ export default function MatchSheet({ sheet }: { sheet: SheetData }) {
               )}
             </div>
 
+            {/* decisão por pênaltis (se houve) */}
+            <ShootoutBlock sheet={sheet} />
+
             {/* elencos por posição */}
             <div className="mt-6 grid gap-6 sm:grid-cols-2">
               <Lineup side={sheet.home} />
               <Lineup side={sheet.away} />
+            </div>
+          </div>
+        </div>
+      )}
+    </>
+  );
+}
+
+// ---- TODAS AS SÚMULAS DO TORNEIO (agrupadas por fase) ----
+export type AllSheetsMatch = {
+  home: { name: string; logo: string };
+  away: { name: string; logo: string };
+  homeScore: number;
+  awayScore: number;
+  playedAt: string | null;
+  sheet: SheetData;
+};
+export type AllSheetsSection = { label: string; matches: AllSheetsMatch[] };
+
+function MiniLogo({ logo }: { logo: string }) {
+  return (
+    <span className="flex h-6 w-6 shrink-0 items-center justify-center overflow-hidden rounded bg-base">
+      {logo ? (
+        // eslint-disable-next-line @next/next/no-img-element
+        <img src={logo} alt="" className="h-full w-full object-cover" style={focusStyle(logo)} />
+      ) : (
+        <Icon name="shield" className="text-[9px] text-faint" />
+      )}
+    </span>
+  );
+}
+
+export function AllSheetsButton({ sections }: { sections: AllSheetsSection[] }) {
+  const [open, setOpen] = useState(false);
+  useEffect(() => {
+    function onKey(e: KeyboardEvent) {
+      if (e.key === "Escape") setOpen(false);
+    }
+    if (open) document.addEventListener("keydown", onKey);
+    return () => document.removeEventListener("keydown", onKey);
+  }, [open]);
+
+  const total = sections.reduce((s, sec) => s + sec.matches.length, 0);
+  if (total === 0) return null;
+
+  return (
+    <>
+      <button
+        onClick={() => setOpen(true)}
+        className="mt-3 w-full rounded-lg border border-gold/30 bg-gold/10 py-2.5 text-center text-xs font-bold uppercase tracking-wide text-gold transition-colors hover:bg-gold/20"
+      >
+        Ver todas as súmulas do torneio ({total}) →
+      </button>
+
+      {open && (
+        <div
+          role="dialog"
+          aria-modal="true"
+          aria-label="Todas as súmulas do torneio"
+          onClick={() => setOpen(false)}
+          className="animate-overlay-in fixed inset-0 z-[100] flex items-center justify-center bg-black/70 p-4 backdrop-blur-sm"
+        >
+          <div
+            onClick={(e) => e.stopPropagation()}
+            className="animate-modal-in relative max-h-[94vh] w-full max-w-2xl overflow-y-auto rounded-xl bg-card p-6"
+          >
+            <button
+              onClick={() => setOpen(false)}
+              aria-label="Fechar"
+              className="absolute right-4 top-4 flex h-8 w-8 items-center justify-center rounded-md bg-panel text-lg text-faint hover:text-white"
+            >
+              ✕
+            </button>
+
+            <h2 className="mb-4 pr-10 text-lg font-bold text-white">Súmulas do torneio</h2>
+
+            <div className="flex flex-col gap-5">
+              {sections.map((sec) => (
+                <div key={sec.label}>
+                  <div className="mb-2 inline-flex items-center rounded bg-gold/15 px-2 py-0.5 text-[11px] font-extrabold uppercase tracking-wide text-gold">
+                    {sec.label}
+                  </div>
+                  <div className="flex flex-col gap-2">
+                    {sec.matches.map((m, i) => {
+                      const homeWin = m.homeScore > m.awayScore;
+                      const awayWin = m.awayScore > m.homeScore;
+                      return (
+                        <div key={i} className="overflow-hidden rounded-lg bg-panel/50">
+                          <div className="flex items-center gap-2 px-3 py-2 text-sm">
+                            <span
+                              className={`min-w-0 flex-1 truncate text-right ${homeWin ? "font-bold text-white" : "text-faint"}`}
+                            >
+                              {m.home.name}
+                            </span>
+                            <MiniLogo logo={m.home.logo} />
+                            <span className="shrink-0 font-mono font-bold tabular-nums">
+                              <span style={{ color: homeWin ? "#00e676" : undefined }}>{m.homeScore}</span>
+                              <span className="mx-1 text-faint">×</span>
+                              <span style={{ color: awayWin ? "#00e676" : undefined }}>{m.awayScore}</span>
+                            </span>
+                            <MiniLogo logo={m.away.logo} />
+                            <span
+                              className={`min-w-0 flex-1 truncate ${awayWin ? "font-bold text-white" : "text-faint"}`}
+                            >
+                              {m.away.name}
+                            </span>
+                          </div>
+                          <MatchSheet sheet={m.sheet} />
+                        </div>
+                      );
+                    })}
+                  </div>
+                </div>
+              ))}
             </div>
           </div>
         </div>

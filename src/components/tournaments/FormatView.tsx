@@ -211,14 +211,20 @@ function slotLogo(slot: string | null, byId: Map<string, TeamLite>): string {
 function MatchBox({ m, byId }: { m: BracketMatch; byId: Map<string, TeamLite> }) {
   const homeWin = m.winner && m.winner === m.home;
   const awayWin = m.winner && m.winner === m.away;
+  // disputa de pênaltis: tempo normal empatado e há cobranças registradas
+  const byPens =
+    m.homeScore != null &&
+    m.awayScore != null &&
+    m.homeScore === m.awayScore &&
+    ((m.homePens ?? 0) > 0 || (m.awayPens ?? 0) > 0);
   return (
     <div
       className="overflow-hidden rounded-lg bg-panel ring-1 ring-white/10"
       style={{ boxShadow: "0 6px 16px -10px rgba(0,0,0,0.6)" }}
     >
       {[
-        { slot: m.home, score: m.homeScore, win: homeWin },
-        { slot: m.away, score: m.awayScore, win: awayWin },
+        { slot: m.home, score: m.homeScore, pens: m.homePens, win: homeWin },
+        { slot: m.away, score: m.awayScore, pens: m.awayPens, win: awayWin },
       ].map((s, si) => (
         <div
           key={si}
@@ -247,6 +253,11 @@ function MatchBox({ m, byId }: { m: BracketMatch; byId: Map<string, TeamLite> })
           </span>
           <span className="shrink-0 font-mono tabular-nums">
             {s.score != null ? s.score : ""}
+            {byPens && s.pens != null && (
+              <span className="ml-1 text-[10px] text-faint" title="Disputa de pênaltis">
+                ({s.pens})
+              </span>
+            )}
           </span>
         </div>
       ))}

@@ -18,13 +18,19 @@ import {
   type Grade,
 } from "@/lib/tournaments";
 import { statusStyle, type TourTeam } from "@/components/tournaments/shared";
-import MatchSheet, { type SheetData, type SheetSide } from "@/components/tournaments/MatchSheet";
+import MatchSheet, {
+  AllSheetsButton,
+  type SheetData,
+  type SheetSide,
+  type AllSheetsSection,
+  type AllSheetsMatch,
+} from "@/components/tournaments/MatchSheet";
 import TeamStatsSection, {
   type TeamStat,
   type StatLeader,
 } from "@/components/tournaments/TeamStatsSection";
 import FormatView from "@/components/tournaments/FormatView";
-import { formatLabel, type TournamentFormat } from "@/lib/formats";
+import { formatLabel, tournamentPhases, type TournamentFormat } from "@/lib/formats";
 
 /**
  * Tela completa de uma copa (rota /tournaments/[id]).
@@ -375,11 +381,26 @@ export default function TournamentScreen({ data }: { data: ScreenData }) {
       });
       return { name: team(teamId), logo: logo(teamId), score, lineup };
     };
+    // disputa de pênaltis (na ordem das cobranças registradas)
+    const kicksOf = (teamId: string | null) =>
+      m.events
+        .filter(
+          (e) => e.teamId === teamId && (e.type === "shootout_goal" || e.type === "shootout_miss"),
+        )
+        .map((e) => ({
+          name: player(e.playerId),
+          nick: nickOf(e.playerId),
+          scored: e.type === "shootout_goal",
+        }));
+    const homeKicks = kicksOf(m.homeTeamId);
+    const awayKicks = kicksOf(m.awayTeamId);
     return {
       home: side(m.homeTeamId, m.homeScore),
       away: side(m.awayTeamId, m.awayScore),
       playedAt: m.playedAt,
       mvpName: m.mvpPlayerId ? player(m.mvpPlayerId) : null,
+      shootout:
+        homeKicks.length || awayKicks.length ? { home: homeKicks, away: awayKicks } : null,
     };
   }
 
@@ -393,6 +414,45 @@ export default function TournamentScreen({ data }: { data: ScreenData }) {
     .filter((m) => !m.isLive && !m.scheduled)
     .sort((a, b) => (b.playedAt ?? "").localeCompare(a.playedAt ?? ""))
     .slice(0, 8);
+
+  // TODAS as súmulas agrupadas por fase (Rodada 1, Quartas de final, etc.).
+  const allSheetSections: AllSheetsSection[] = (() => {
+    const finishedAll = data.matches.filter(
+      (m) => !m.isLive && !m.scheduled && m.homeTeamId && m.awayTeamId,
+    );
+    const toSheetMatch = (m: Match): AllSheetsMatch => ({
+      home: { name: team(m.homeTeamId), logo: logo(m.homeTeamId) },
+      away: { name: team(m.awayTeamId), logo: logo(m.awayTeamId) },
+      homeScore: m.homeScore,
+      awayScore: m.awayScore,
+      playedAt: m.playedAt,
+      sheet: buildSheet(m),
+    });
+    const remaining = new Set(finishedAll);
+    const phases = tournamentPhases(data.format, data.teams, data.matches, data.groupCount);
+    const sections: AllSheetsSection[] = [];
+    for (const ph of phases) {
+      const ms: Match[] = [];
+      for (const { a, b } of ph.pairs) {
+        const found = [...remaining].find(
+          (x) =>
+            (x.homeTeamId === a && x.awayTeamId === b) ||
+            (x.homeTeamId === b && x.awayTeamId === a),
+        );
+        if (found) {
+          ms.push(found);
+          remaining.delete(found);
+        }
+      }
+      if (ms.length) sections.push({ label: ph.label, matches: ms.map(toSheetMatch) });
+    }
+    if (remaining.size)
+      sections.push({
+        label: "Demais jogos",
+        matches: finishedAll.filter((m) => remaining.has(m)).map(toSheetMatch),
+      });
+    return sections;
+  })();
 
   const scorers = computeTopScorers(data.matches);
   const assists = computeTopAssists(data.matches);
@@ -449,7 +509,29 @@ export default function TournamentScreen({ data }: { data: ScreenData }) {
           else if (e.type === "red_card") rc.set(e.playerId, (rc.get(e.playerId) ?? 0) + 1);
         }
 
-    const roster = (data.teamRosters[tm.id] ?? []).filter((r) => r.active);
+    // Elenco do time NESTA copa: derivado de quem jogou (escalações + eventos),
+    // não do elenco global. Assim um mesmo time (ex.: Napoli) mostra o elenco
+    // certo em cada copa, sem precisar criar times duplicados.
+    const squadPos = new Map<string, Position | null>();
+    const addSquad = (pid: string, pos: Position | null) => {
+      if (!squadPos.has(pid)) squadPos.set(pid, pos);
+    };
+    for (const m of data.matches) {
+      for (const l of m.lineups)
+        if (l.teamId === tm.id)
+          addSquad(l.playerId, l.position ?? data.playerPositions[l.playerId] ?? null);
+      for (const e of m.events)
+        if (e.teamId === tm.id) {
+          addSquad(e.playerId, data.playerPositions[e.playerId] ?? null);
+          if (e.type === "substitution" && e.outPlayerId)
+            addSquad(e.outPlayerId, data.playerPositions[e.outPlayerId] ?? null);
+        }
+    }
+    const roster = [...squadPos.entries()].map(([playerId, position]) => ({
+      playerId,
+      position,
+      active: true,
+    }));
     const toPlayer = (r: { playerId: string }) => ({
       name: player(r.playerId),
       nick: nickOf(r.playerId),
@@ -799,6 +881,7 @@ export default function TournamentScreen({ data }: { data: ScreenData }) {
               })}
             </div>
           )}
+          <AllSheetsButton sections={allSheetSections} />
         </section>
 
         {/* TOP POR POSIÇÃO (copa encerrada) */}

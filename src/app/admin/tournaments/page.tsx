@@ -69,6 +69,7 @@ export default function AdminTournamentsPage() {
   const [evMinute, setEvMinute] = useState("");
   const [evOut, setEvOut] = useState(""); // substituição: jogador que sai
   const [evIn, setEvIn] = useState(""); // substituição: jogador que entra
+  const [penPlayer, setPenPlayer] = useState(""); // cobrador na disputa de pênaltis
   const [newMessage, setNewMessage] = useState("");
   const [busy, setBusy] = useState(false);
   const [msg, setMsg] = useState("");
@@ -380,6 +381,19 @@ export default function AdminTournamentsPage() {
 
   function removeEvent(i: number) {
     setNewMatch((m) => ({ ...m, events: m.events.filter((_, idx) => idx !== i) }));
+  }
+
+  // disputa de pênaltis: adiciona uma cobrança (convertida ou perdida).
+  function addShootout(scored: boolean) {
+    if (!penPlayer) return;
+    const teamId = eligiblePlayers().find((p) => p.id === penPlayer)?.teamId ?? null;
+    setNewMatch((m) => ({
+      ...m,
+      events: [
+        ...m.events,
+        { playerId: penPlayer, teamId, type: scored ? "shootout_goal" : "shootout_miss", minute: null },
+      ],
+    }));
   }
 
   function editMatch(m: Match) {
@@ -973,7 +987,9 @@ export default function AdminTournamentsPage() {
                     value={evType}
                     onChange={(e) => setEvType(e.target.value as MatchEventType)}
                   >
-                    {MATCH_EVENT_TYPES.map((t) => (
+                    {MATCH_EVENT_TYPES.filter(
+                      (t) => t.type !== "shootout_goal" && t.type !== "shootout_miss",
+                    ).map((t) => (
                       <option key={t.type} value={t.type}>
                         {t.emoji} {t.label}
                       </option>
@@ -1073,27 +1089,112 @@ export default function AdminTournamentsPage() {
                   + evento
                 </button>
               </div>
-              {newMatch.events.length > 0 && (
+              {newMatch.events.some(
+                (e) => e.type !== "shootout_goal" && e.type !== "shootout_miss",
+              ) && (
                 <div className="flex flex-wrap gap-1.5">
-                  {newMatch.events.map((e, i) => (
-                    <button
-                      key={i}
-                      onClick={() => removeEvent(i)}
-                      title="Remover evento"
-                      className="rounded-md bg-base px-2 py-0.5 text-[11px]"
-                    >
-                      {eventEmoji(e.type)} {playerName(e.playerId)}
-                      {e.type === "substitution" && e.outPlayerId
-                        ? ` ← ${playerName(e.outPlayerId)}`
-                        : ""}
-                      {e.minute != null ? ` ${e.minute}'` : ""} ✕
-                    </button>
-                  ))}
+                  {newMatch.events.map((e, i) =>
+                    e.type === "shootout_goal" || e.type === "shootout_miss" ? null : (
+                      <button
+                        key={i}
+                        onClick={() => removeEvent(i)}
+                        title="Remover evento"
+                        className="rounded-md bg-base px-2 py-0.5 text-[11px]"
+                      >
+                        {eventEmoji(e.type)} {playerName(e.playerId)}
+                        {e.type === "substitution" && e.outPlayerId
+                          ? ` ← ${playerName(e.outPlayerId)}`
+                          : ""}
+                        {e.minute != null ? ` ${e.minute}'` : ""} ✕
+                      </button>
+                    ),
+                  )}
                 </div>
               )}
             </>
           )}
         </div>
+
+        {/* DECISÃO POR PÊNALTIS (mata-mata empatado) */}
+        {bothTeams && (
+          <div className="flex flex-col gap-2 rounded-md bg-panel p-2">
+            <span className="text-[11px] font-bold uppercase tracking-wide text-faint">
+              Decisão por pênaltis
+              {(() => {
+                const hg = newMatch.events.filter(
+                  (e) => e.type === "shootout_goal" && e.teamId === newMatch.homeTeamId,
+                ).length;
+                const ag = newMatch.events.filter(
+                  (e) => e.type === "shootout_goal" && e.teamId === newMatch.awayTeamId,
+                ).length;
+                const any = newMatch.events.some(
+                  (e) => e.type === "shootout_goal" || e.type === "shootout_miss",
+                );
+                return any ? (
+                  <span className="ml-2 font-mono text-white">
+                    {hg} × {ag}
+                  </span>
+                ) : null;
+              })()}
+            </span>
+            <div className="flex flex-wrap items-end gap-2">
+              <label className="flex flex-col gap-1 text-[11px]">
+                Cobrador
+                <select
+                  className={inputC}
+                  value={penPlayer}
+                  onChange={(e) => setPenPlayer(e.target.value)}
+                >
+                  <option value="">Selecione…</option>
+                  {[newMatch.homeTeamId, newMatch.awayTeamId].map((tid) => (
+                    <optgroup key={tid} label={teamName(tid)}>
+                      {eligiblePlayers()
+                        .filter((p) => p.teamId === tid)
+                        .map((p) => (
+                          <option key={p.id} value={p.id}>
+                            {p.name}
+                          </option>
+                        ))}
+                    </optgroup>
+                  ))}
+                </select>
+              </label>
+              <button
+                onClick={() => addShootout(true)}
+                className="rounded-md bg-base px-3 py-2 text-xs hover:bg-base/70"
+              >
+                ⚽ Converteu
+              </button>
+              <button
+                onClick={() => addShootout(false)}
+                className="rounded-md bg-base px-3 py-2 text-xs hover:bg-base/70"
+              >
+                🔴 Errou
+              </button>
+            </div>
+            {newMatch.events.some(
+              (e) => e.type === "shootout_goal" || e.type === "shootout_miss",
+            ) && (
+              <div className="flex flex-wrap gap-1.5">
+                {newMatch.events.map((e, i) =>
+                  e.type === "shootout_goal" || e.type === "shootout_miss" ? (
+                    <button
+                      key={i}
+                      onClick={() => removeEvent(i)}
+                      title="Remover cobrança"
+                      className="rounded-md bg-base px-2 py-0.5 text-[11px]"
+                    >
+                      {e.type === "shootout_goal" ? "⚽" : "🔴✕"} {playerName(e.playerId)} ✕
+                    </button>
+                  ) : null,
+                )}
+              </div>
+            )}
+            <span className="text-[10px] text-faint">
+              Use quando o mata-mata terminar empatado. Não conta no placar nem na artilharia.
+            </span>
+          </div>
+        )}
 
         {/* MVP (só em súmula encerrada) */}
         {liveMode ? (

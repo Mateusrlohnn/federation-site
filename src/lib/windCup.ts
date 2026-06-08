@@ -344,8 +344,8 @@ export function resolveWindCup(
  * Confronto do BRACKET entre dois times = a ÚLTIMA partida entre eles (a
  * revanche pós-liga). Exige ≥2 jogos do par (1º = liga, 2º = bracket); se só
  * existe o jogo da liga, o confronto eliminatório ainda não foi disputado.
- * Retorna o placar orientado para (home, away). Pênaltis não são gravados nas
- * partidas, então empate fica indefinido até haver suporte a pênaltis no placar.
+ * Retorna o placar orientado para (home, away), incluindo a disputa de pênaltis
+ * (eventos shootout_goal) para decidir empates do tempo normal.
  */
 function bracketMeeting(matches: MatchLike[], home: string, away: string): WindResult | undefined {
   const between = finalsByDate(matches).filter((m) => {
@@ -356,8 +356,8 @@ function bracketMeeting(matches: MatchLike[], home: string, away: string): WindR
   if (between.length < 2) return undefined; // só o jogo da liga (ou nenhum)
   const m = between[between.length - 1]; // o mais recente = bracket
   return m.homeTeamId === home
-    ? { homeScore: m.homeScore, awayScore: m.awayScore }
-    : { homeScore: m.awayScore, awayScore: m.homeScore };
+    ? { homeScore: m.homeScore, awayScore: m.awayScore, homePens: m.homePens ?? null, awayPens: m.awayPens ?? null }
+    : { homeScore: m.awayScore, awayScore: m.homeScore, homePens: m.awayPens ?? null, awayPens: m.homePens ?? null };
 }
 
 /**

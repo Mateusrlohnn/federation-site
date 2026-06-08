@@ -30,6 +30,8 @@ export type MatchEventType =
   | "penalty_miss"
   | "assist"
   | "yellow_card"
+  | "shootout_goal"
+  | "shootout_miss"
   | "red_card"
   | "substitution";
 
@@ -42,6 +44,8 @@ export const MATCH_EVENT_TYPES: { type: MatchEventType; label: string; emoji: st
   { type: "yellow_card", label: "Cartão amarelo", emoji: "🟨" },
   { type: "red_card", label: "Cartão vermelho", emoji: "🟥" },
   { type: "substitution", label: "Substituição", emoji: "🔄" },
+  { type: "shootout_goal", label: "Pênalti (disputa) convertido", emoji: "⚽" },
+  { type: "shootout_miss", label: "Pênalti (disputa) perdido", emoji: "🔴" },
 ];
 
 export type MatchEvent = {
@@ -97,6 +101,9 @@ export type Match = {
   notes: string;
   events: MatchEvent[];
   lineups: MatchLineup[];
+  // Disputa de pênaltis (mata-mata): gols convertidos por lado. 0/0 = não houve.
+  homePens: number;
+  awayPens: number;
 };
 
 /** Um gol conta na artilharia? (gol normal ou pênalti convertido — gol contra NÃO) */
@@ -224,6 +231,13 @@ export function matchFromRow(r: Record<string, unknown>): Match {
           rating?: unknown;
         }[]
       | undefined) ?? [];
+  // pênaltis da disputa = contagem de 'shootout_goal' por lado (não conta no placar).
+  const homePens = events.filter(
+    (e) => e.type === "shootout_goal" && (e.team_id as string) === (r.home_team_id as string),
+  ).length;
+  const awayPens = events.filter(
+    (e) => e.type === "shootout_goal" && (e.team_id as string) === (r.away_team_id as string),
+  ).length;
   return {
     id: r.id as string,
     homeTeamId: (r.home_team_id as string) ?? null,
@@ -249,6 +263,8 @@ export function matchFromRow(r: Record<string, unknown>): Match {
       isStarter: l.is_starter !== false,
       rating: (l.rating as Grade) ?? null,
     })),
+    homePens,
+    awayPens,
   };
 }
 
