@@ -540,7 +540,7 @@ export default function AdminTournamentsPage() {
 
     if (draft.format === "pontos_corridos") {
       generateRoundRobin(ids).forEach((r) => add(r.pairings));
-    } else if (draft.format === "grupos_mata_mata") {
+    } else if (draft.format === "grupos_mata_mata" || draft.format === "libertadores") {
       const labeled = ids.filter((id) => groupOf.get(id));
       let groups: { teamIds: string[] }[];
       if (labeled.length) {
@@ -667,7 +667,7 @@ export default function AdminTournamentsPage() {
       const j = Math.floor(Math.random() * (i + 1));
       [ids[i], ids[j]] = [ids[j], ids[i]];
     }
-    const isGroups = draft.format === "grupos_mata_mata";
+    const isGroups = draft.format === "grupos_mata_mata" || draft.format === "libertadores";
     const gc = isGroups ? Math.max(2, draft.groupCount || suggestGroupCount(ids.length)) : 0;
 
     setBusy(true);
@@ -1397,8 +1397,8 @@ export default function AdminTournamentsPage() {
                     {draft.teamIds.length} time(s) vinculado(s).
                   </span>
 
-                  {/* nº de grupos (apenas grupos + mata-mata) */}
-                  {draft.format === "grupos_mata_mata" && (
+                  {/* nº de grupos (grupos + mata-mata, incl. Libertadores) */}
+                  {(draft.format === "grupos_mata_mata" || draft.format === "libertadores") && (
                     <label className="flex w-40 flex-col gap-1 text-xs">
                       Número de grupos
                       <input

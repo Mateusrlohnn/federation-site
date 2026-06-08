@@ -12,7 +12,8 @@ export type TournamentFormat =
   | "suico"
   | "grupos_mata_mata"
   | "mata_mata"
-  | "wind_cup";
+  | "wind_cup"
+  | "libertadores";
 
 export const TOURNAMENT_FORMATS: {
   value: TournamentFormat;
@@ -22,6 +23,11 @@ export const TOURNAMENT_FORMATS: {
   { value: "pontos_corridos", label: "Pontos Corridos", desc: "Todos contra todos (tabela)." },
   { value: "suico", label: "Sistema Suíço", desc: "Chaveamento por recorde de V/D." },
   { value: "grupos_mata_mata", label: "Grupos + Mata-Mata", desc: "Fase de grupos e eliminatórias." },
+  {
+    value: "libertadores",
+    label: "Grupos + Mata-Mata (Libertadores)",
+    desc: "1º de cada grupo vai à semi; 2º e 3º jogam as quartas.",
+  },
   { value: "mata_mata", label: "Mata-Mata", desc: "Eliminatórias diretas (chave)." },
   { value: "wind_cup", label: "Wind Cup", desc: "8 times: pontos (7 jogos) + bracket Upper/Lower." },
 ];
@@ -356,6 +362,63 @@ export function buildKnockout(
     teamsInRound = Math.floor(teamsInRound / 2);
   }
   return rounds;
+}
+
+/**
+ * Mata-mata "estilo Libertadores" derivado da classificação dos grupos:
+ *  - 1º de cada grupo vai DIRETO à semifinal (bye);
+ *  - 2º e 3º colocados disputam as QUARTAS (cruzado entre os grupos);
+ *  - vencedores das quartas enfrentam os 1º colocados nas semis → final.
+ *
+ * Pensado para 2 grupos. `groups[g]` é a classificação do grupo já ordenada
+ * ([1º, 2º, 3º, ...]). Os confrontos são resolvidos pelas partidas finalizadas;
+ * vagas ainda indefinidas (quarta/semi não jogada) aparecem como null (a definir).
+ *
+ *   Quartas:  QF1 = 2ºG1 × 3ºG2   |  QF2 = 2ºG2 × 3ºG1
+ *   Semis:    SF1 = 1ºG1 × venc(QF2)  |  SF2 = 1ºG2 × venc(QF1)
+ *   Final:    venc(SF1) × venc(SF2)
+ */
+export function buildLibertadoresKnockout(
+  groups: string[][],
+  matches: MatchLike[],
+): BracketRound[] {
+  if (groups.length < 2) return [];
+  const [g1, g2] = groups;
+  const slot = (arr: string[], i: number): SlotTeam => arr[i] ?? null;
+  const A1 = slot(g1, 0);
+  const A2 = slot(g1, 1);
+  const A3 = slot(g1, 2);
+  const B1 = slot(g2, 0);
+  const B2 = slot(g2, 1);
+  const B3 = slot(g2, 2);
+
+  // Resolve um confronto pelo resultado real (placar/vencedor); vaga vazia = TBD.
+  const mk = (home: SlotTeam, away: SlotTeam): BracketMatch => {
+    let homeScore: number | null = null;
+    let awayScore: number | null = null;
+    let winner: string | null = null;
+    if (home && away && home !== BYE && away !== BYE) {
+      const m = findMatch(matches, home, away);
+      if (m) {
+        homeScore = m.homeTeamId === home ? m.homeScore : m.awayScore;
+        awayScore = m.homeTeamId === home ? m.awayScore : m.homeScore;
+        winner = knockoutWinner(matches, home, away);
+      }
+    }
+    return { home, away, homeScore, awayScore, winner };
+  };
+
+  const qf1 = mk(A2, B3);
+  const qf2 = mk(B2, A3);
+  const sf1 = mk(A1, qf2.winner);
+  const sf2 = mk(B1, qf1.winner);
+  const final = mk(sf1.winner, sf2.winner);
+
+  return [
+    { label: "Quartas de final", matches: [qf1, qf2] },
+    { label: "Semifinais", matches: [sf1, sf2] },
+    { label: "Final", matches: [final] },
+  ];
 }
 
 // ---------------------------------------------------------------------------

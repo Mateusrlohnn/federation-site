@@ -6,6 +6,7 @@ import {
   computeStandings,
   splitGroups,
   buildKnockout,
+  buildLibertadoresKnockout,
   nextPowerOfTwo,
   roundRobinFixtures,
   type FixtureRound,
@@ -699,6 +700,56 @@ export default function FormatView({
         games={windCupLeagueMatches(matches)}
         byId={byId}
       />
+    );
+  }
+
+  // ---- GRUPOS + MATA-MATA (LIBERTADORES): 1º à semi; 2º e 3º nas quartas ----
+  if (format === "libertadores") {
+    const groups = buildGroups(teams, groupCount);
+    const standingsByGroup = groups.map((g) => computeStandings(g.teamIds, matches));
+    const knockout = buildLibertadoresKnockout(
+      standingsByGroup.map((s) => s.map((r) => r.teamId)),
+      matches,
+    );
+    // 1º (gold) vai direto à semi; 2º e 3º (azul) disputam as quartas.
+    const libZone = (pos: number) =>
+      pos === 1 ? ACCENT.gold : pos <= 3 ? ACCENT.draw : "transparent";
+    return (
+      <div className="flex flex-col gap-6">
+        <div className="grid gap-3 sm:grid-cols-2">
+          {groups.map((g, gi) => (
+            <div key={g.label} className="overflow-hidden rounded-lg bg-card ring-1 ring-white/5">
+              <div className="bg-gradient-to-r from-gold/20 to-transparent px-3 py-2 text-sm font-extrabold uppercase tracking-wide">
+                {g.label}
+              </div>
+              <StandingsTable rows={standingsByGroup[gi]} byId={byId} zoneColorOf={libZone} />
+            </div>
+          ))}
+        </div>
+        {/* legenda das zonas de classificação */}
+        <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-xs text-faint">
+          <span className="flex items-center gap-1.5">
+            <span className="h-2.5 w-2.5 rounded-full" style={{ backgroundColor: ACCENT.gold }} />
+            <b className="text-white">1º colocado</b> — vaga direta na semifinal
+          </span>
+          <span className="flex items-center gap-1.5">
+            <span className="h-2.5 w-2.5 rounded-full" style={{ backgroundColor: ACCENT.draw }} />
+            <b className="text-white">2º e 3º</b> — disputam as quartas de final
+          </span>
+        </div>
+        {knockout.length > 0 && (
+          <div>
+            <h3 className="mb-1 text-sm font-bold uppercase tracking-wide text-faint">Mata-mata</h3>
+            <p className="mb-3 text-xs text-faint">
+              Os <b className="text-white">1º colocados</b> de cada grupo avançam direto à{" "}
+              <b className="text-white">semifinal</b>. Os <b className="text-white">2º e 3º</b> entram
+              nas <b className="text-white">quartas</b> (cruzado entre grupos: 2ºG1 × 3ºG2 e
+              2ºG2 × 3ºG1); os vencedores enfrentam os 1º nas semis.
+            </p>
+            <Bracket rounds={knockout} byId={byId} />
+          </div>
+        )}
+      </div>
     );
   }
 
