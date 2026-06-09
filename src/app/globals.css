@@ -103,3 +103,433 @@ button:not(:disabled),
     animation: none;
   }
 }
+
+/* ============================================================
+ * Cards estilo FIFA / EA FC — 5 categorias por overall/status.
+ * Cada variante define apenas suas variáveis (--card-*); a estrutura
+ * (.fut-card__*) é compartilhada. Componente: components/players/FifaCard.tsx
+ * ============================================================ */
+.fut-card {
+  position: relative;
+  aspect-ratio: 3 / 4;
+  width: 100%;
+  max-width: 200px;
+  border-radius: 16px;
+  overflow: hidden;
+  isolation: isolate;
+  color: var(--card-ink);
+  background: var(--card-bg);
+  /* borda externa + elevação */
+  box-shadow:
+    0 10px 26px rgba(0, 0, 0, 0.5),
+    inset 0 0 0 2px var(--card-border);
+}
+/* brilho metálico + textura específica da variante */
+.fut-card::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  z-index: 0;
+  pointer-events: none;
+  background: var(
+    --card-overlay,
+    linear-gradient(115deg, transparent 40%, rgba(255, 255, 255, 0.4) 50%, transparent 60%)
+  );
+}
+/* linha interna fina espelhando a borda externa (detalhe escudo FUT) */
+.fut-card__inner {
+  position: absolute;
+  inset: 7px;
+  z-index: 1;
+  border: 1px solid var(--card-line);
+  border-radius: 10px;
+}
+.fut-card__corner {
+  position: absolute;
+  left: 11px;
+  top: 11px;
+  z-index: 2;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  line-height: 1;
+  text-shadow: 0 1px 2px rgba(0, 0, 0, 0.18);
+}
+.fut-card__ovr {
+  font-size: 2.15rem;
+  font-weight: 800;
+  font-variant-numeric: tabular-nums;
+}
+.fut-card__pos {
+  margin-top: 2px;
+  font-size: 0.82rem;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+}
+.fut-card__rule {
+  width: 26px;
+  height: 1px;
+  margin-top: 5px;
+  background: currentColor;
+  opacity: 0.4;
+}
+.fut-card__crest {
+  margin-top: 6px;
+  height: 28px;
+  width: 28px;
+  object-fit: contain;
+  filter: drop-shadow(0 1px 2px rgba(0, 0, 0, 0.3));
+}
+.fut-card__initials {
+  margin-top: 6px;
+  display: flex;
+  height: 28px;
+  min-width: 28px;
+  align-items: center;
+  justify-content: center;
+  padding: 0 4px;
+  border: 1.5px solid currentColor;
+  border-radius: 9999px;
+  font-size: 0.7rem;
+  font-weight: 800;
+}
+.fut-card__avatar {
+  position: absolute;
+  inset: 6% 0 24% 0;
+  z-index: 1;
+  display: flex;
+  align-items: flex-end;
+  justify-content: center;
+}
+.fut-card__avatar img {
+  height: 100%;
+  width: auto;
+  object-fit: contain;
+  filter: drop-shadow(0 8px 12px rgba(0, 0, 0, 0.5));
+}
+.fut-card__strip {
+  position: absolute;
+  inset: auto 0 0 0;
+  z-index: 2;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  padding: 6px 10px 9px;
+  background: var(--card-strip);
+}
+.fut-card__name {
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 0.92rem;
+  font-weight: 800;
+  letter-spacing: 0.02em;
+  text-transform: uppercase;
+  color: var(--card-name, var(--card-ink));
+}
+.fut-card__type {
+  margin-top: 2px;
+  font-size: 0.6rem;
+  font-weight: 700;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+  color: var(--card-sub);
+}
+
+/* 70–79 · Prata simples — cinza metálico */
+.card-silver {
+  --card-bg: linear-gradient(160deg, #fdfdfe 0%, #d6d9de 32%, #aeb2ba 64%, #878b94 100%);
+  --card-ink: #23242a;
+  --card-border: rgba(120, 124, 132, 0.6);
+  --card-line: rgba(60, 62, 70, 0.25);
+  --card-strip: rgba(40, 42, 48, 0.12);
+  --card-sub: rgba(35, 36, 42, 0.6);
+  --card-name: #23242a;
+}
+
+/* 80–89 · Ouro padrão — dourado iluminado */
+.card-gold {
+  --card-bg: linear-gradient(160deg, #fdf2c4 0%, #f4d678 28%, #d8a93a 60%, #b8862a 100%);
+  --card-ink: #3a2c07;
+  --card-border: rgba(120, 90, 20, 0.5);
+  --card-line: rgba(80, 60, 10, 0.3);
+  --card-strip: rgba(58, 44, 7, 0.14);
+  --card-sub: rgba(58, 44, 7, 0.65);
+  --card-name: #3a2c07;
+}
+
+/* 90–94 · Azul especial (TOTY/TOTS) — azul cósmico + bordas/letras douradas */
+.card-blue {
+  --card-bg:
+    radial-gradient(120% 80% at 50% 16%, rgba(74, 124, 255, 0.4), transparent 62%),
+    linear-gradient(160deg, #0b1c46 0%, #10306e 45%, #0a1330 100%);
+  --card-overlay:
+    radial-gradient(60% 42% at 72% 18%, rgba(130, 178, 255, 0.28), transparent 70%),
+    linear-gradient(115deg, transparent 42%, rgba(255, 255, 255, 0.16) 50%, transparent 58%);
+  --card-ink: #ffe08a;
+  --card-border: #e9c46a;
+  --card-line: rgba(233, 196, 106, 0.45);
+  --card-strip: rgba(255, 255, 255, 0.08);
+  --card-sub: #bcd0ff;
+  --card-name: #ffffff;
+}
+
+/* 95–97 (Atual) · Rosa Refinada (FUT Birthday) — magenta texturizado; brilho só no perímetro */
+.card-pink-refined {
+  --card-bg: linear-gradient(160deg, #ff36b5 0%, #e21aa0 45%, #a80c70 100%);
+  --card-overlay:
+    repeating-linear-gradient(45deg, rgba(255, 255, 255, 0.07) 0 9px, transparent 9px 18px),
+    linear-gradient(115deg, transparent 42%, rgba(255, 255, 255, 0.26) 50%, transparent 58%);
+  --card-ink: #ffffff;
+  --card-border: #f3d27a;
+  --card-line: rgba(255, 255, 255, 0.4);
+  --card-strip: rgba(120, 10, 80, 0.42);
+  --card-sub: #ffe08a;
+  --card-name: #ffffff;
+}
+
+/* 98–99 (Atual) · Elite de Fogo / INFERNO — fundo TRANSPARENTE (sem preto):
+   só a chama em looping atrás do avatar + borda dourada + aura de brasas.
+   O fundo escuro padrão do site aparece atrás da chama. */
+.card-fire-elite {
+  --card-bg: transparent;
+  --card-overlay: transparent;
+  --card-ink: #ffe1a6; /* dourado premium — overall + posição */
+  --card-border: #ffce6a;
+  --card-line: rgba(255, 206, 106, 0.5);
+  --card-strip: rgba(40, 5, 2, 0.55);
+  --card-sub: #ffd27a;
+  --card-name: #ffffff;
+}
+
+/* Lendária / ICON (auge de aposentado) — creme minimalista + raios dourados */
+.card-icon {
+  --card-bg:
+    conic-gradient(
+      from 210deg at 50% 38%,
+      rgba(214, 178, 90, 0.2) 0deg,
+      transparent 30deg,
+      rgba(214, 178, 90, 0.16) 60deg,
+      transparent 90deg,
+      rgba(214, 178, 90, 0.2) 120deg,
+      transparent 150deg,
+      rgba(214, 178, 90, 0.16) 180deg,
+      transparent 210deg,
+      rgba(214, 178, 90, 0.2) 240deg,
+      transparent 270deg,
+      rgba(214, 178, 90, 0.16) 300deg,
+      transparent 330deg,
+      rgba(214, 178, 90, 0.2) 360deg
+    ),
+    linear-gradient(160deg, #fffdf6 0%, #f3ead3 55%, #e7d7b0 100%);
+  --card-overlay: linear-gradient(
+    115deg,
+    transparent 42%,
+    rgba(255, 255, 255, 0.5) 50%,
+    transparent 58%
+  );
+  --card-ink: #3a2e10;
+  --card-border: #c9a24e;
+  --card-line: rgba(180, 140, 60, 0.55);
+  --card-strip: rgba(120, 95, 30, 0.12);
+  --card-sub: #9a7b2e;
+  --card-name: #2c2410;
+}
+
+/* ============================================================
+ * Animações premium — azul, rosa refinada e elite de fogo.
+ * Princípio central: NENHUM efeito no miolo da carta. Todo brilho/
+ * feixe/chama vive no PERÍMETRO (box-shadow + anel de borda + chamas
+ * atrás da carta), p/ nunca cobrir o avatar nem o texto.
+ * Animações usam só transform / opacity / box-shadow (performáticas).
+ * ============================================================ */
+.fut-card {
+  transition:
+    box-shadow 0.3s ease,
+    transform 0.3s ease;
+}
+.fut-card:hover {
+  transform: translateY(-3px);
+}
+
+/* --- Azul (90–94): pulso de energia elétrica cósmica (hover) --- */
+@keyframes fut-blue-pulse {
+  0%,
+  100% {
+    box-shadow:
+      0 12px 28px rgba(0, 0, 0, 0.5),
+      inset 0 0 0 2px var(--card-border),
+      0 0 8px 1px rgba(0, 242, 254, 0.35),
+      0 0 18px 3px rgba(79, 172, 254, 0.25);
+  }
+  50% {
+    box-shadow:
+      0 12px 28px rgba(0, 0, 0, 0.5),
+      inset 0 0 0 2px var(--card-border),
+      0 0 16px 4px rgba(0, 242, 254, 0.7),
+      0 0 36px 11px rgba(79, 172, 254, 0.55);
+  }
+}
+.card-blue:hover {
+  animation: fut-blue-pulse 1.8s ease-in-out infinite;
+}
+
+/* ============================================================
+ * ROSA REFINADA (95–97) — brilho EXCLUSIVO nas bordas.
+ *  1) halo de perímetro que respira (box-shadow, sempre ativo, sutil)
+ *  2) feixe de luz girando só no anel da borda (border-beam via mask)
+ * Nada toca o centro: avatar e texto ficam 100% legíveis.
+ * ============================================================ */
+@property --fut-angle {
+  syntax: "<angle>";
+  initial-value: 0deg;
+  inherits: false;
+}
+@keyframes fut-rotate {
+  to {
+    --fut-angle: 360deg;
+  }
+}
+/* halo rosa de perímetro — respiração suave */
+@keyframes fut-pink-halo {
+  0%,
+  100% {
+    box-shadow:
+      0 10px 26px rgba(0, 0, 0, 0.5),
+      inset 0 0 0 2px var(--card-border),
+      0 0 9px 1px rgba(255, 70, 190, 0.35),
+      0 0 20px 4px rgba(255, 70, 190, 0.18);
+  }
+  50% {
+    box-shadow:
+      0 10px 26px rgba(0, 0, 0, 0.5),
+      inset 0 0 0 2px var(--card-border),
+      0 0 15px 3px rgba(255, 70, 190, 0.6),
+      0 0 30px 9px rgba(255, 70, 190, 0.32);
+  }
+}
+.card-pink-refined {
+  animation: fut-pink-halo 2.6s ease-in-out infinite;
+}
+.card-pink-refined:hover {
+  animation-duration: 1.4s; /* respira mais rápido no hover */
+}
+/* anel de luz girando ao redor da borda — sempre ativo, discreto */
+.card-pink-refined::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  z-index: 4; /* só desenha o anel da borda (mask), não cobre o conteúdo */
+  border-radius: 16px;
+  padding: 2px; /* espessura do feixe na borda */
+  background: conic-gradient(
+    from var(--fut-angle),
+    transparent 0deg 150deg,
+    rgba(255, 0, 127, 0.9) 200deg,
+    #ffd75e 260deg,
+    rgba(255, 0, 127, 0.9) 320deg,
+    transparent 360deg
+  );
+  /* mostra só a borda (anel), nunca o miolo */
+  -webkit-mask:
+    linear-gradient(#000 0 0) content-box,
+    linear-gradient(#000 0 0);
+  -webkit-mask-composite: xor;
+  mask:
+    linear-gradient(#000 0 0) content-box,
+    linear-gradient(#000 0 0);
+  mask-composite: exclude;
+  opacity: 0.85;
+  pointer-events: none;
+  animation: fut-rotate 3.6s linear infinite;
+  will-change: transform;
+}
+.card-pink-refined:hover::after {
+  opacity: 1;
+  animation-duration: 2.2s;
+}
+
+/* ============================================================
+ * ELITE DE FOGO / INFERNO (98–99) — chama LIMPA em looping atrás do avatar.
+ * O SVG (componente FireLayer) gera fogo por turbulência fractal e é
+ * TRANSPARENTE (some no topo/laterais), então o fundo escuro do site aparece
+ * atrás — sem preenchimento preto. Em volta, aura de brasas pulsa por box-shadow.
+ * ============================================================ */
+.fut-card__fire {
+  position: absolute;
+  inset: 0;
+  z-index: 0; /* atrás do avatar (z1) e dos textos (z2) */
+  width: 100%;
+  height: 100%;
+  pointer-events: none;
+  transform-origin: 50% 100%; /* a chama sobe a partir da base */
+  animation: fut-fire-flicker 0.5s ease-in-out infinite alternate;
+  will-change: transform, opacity, filter;
+}
+@keyframes fut-fire-flicker {
+  0% {
+    opacity: 0.9;
+    transform: scaleY(1) translateY(0);
+    filter: brightness(1) saturate(1.05);
+  }
+  100% {
+    opacity: 1;
+    transform: scaleY(1.05) translateY(-2px);
+    filter: brightness(1.16) saturate(1.15);
+  }
+}
+
+/* aura de brasas pulsante ao redor de TODA a carta (box-shadow) */
+@keyframes fire-aura {
+  0%,
+  100% {
+    box-shadow:
+      0 10px 26px rgba(0, 0, 0, 0.55),
+      inset 0 0 0 2px var(--card-border),
+      0 0 16px 3px rgba(255, 120, 20, 0.6),
+      0 0 34px 10px rgba(255, 60, 10, 0.4);
+  }
+  50% {
+    box-shadow:
+      0 10px 26px rgba(0, 0, 0, 0.55),
+      inset 0 0 0 2px var(--card-border),
+      0 0 26px 7px rgba(255, 150, 40, 0.85),
+      0 0 56px 20px rgba(255, 70, 12, 0.55);
+  }
+}
+.card-fire-elite {
+  /* a aura (box-shadow) vaza naturalmente p/ fora mesmo com overflow:hidden;
+     o fogo SVG interno é recortado no formato arredondado da carta. */
+  animation: fire-aura 1.6s ease-in-out infinite;
+}
+
+/* tipografia premium legível sobre as chamas */
+.card-fire-elite .fut-card__ovr,
+.card-fire-elite .fut-card__pos,
+.card-fire-elite .fut-card__name {
+  text-shadow:
+    0 1px 3px rgba(60, 8, 0, 0.85),
+    0 0 9px rgba(0, 0, 0, 0.5);
+}
+/* avatar destacado: sombra escura + leve aura quente atrás do jogador */
+.card-fire-elite .fut-card__avatar img {
+  filter:
+    drop-shadow(0 6px 10px rgba(0, 0, 0, 0.6))
+    drop-shadow(0 0 16px rgba(255, 120, 30, 0.5));
+}
+
+/* Respeita usuários que preferem menos movimento (vem depois p/ vencer a cascata) */
+@media (prefers-reduced-motion: reduce) {
+  .card-blue:hover,
+  .card-pink-refined,
+  .card-pink-refined::after,
+  .card-pink-refined:hover::after,
+  .card-fire-elite,
+  .fut-card__fire {
+    animation: none;
+  }
+  .fut-card:hover {
+    transform: none;
+  }
+}

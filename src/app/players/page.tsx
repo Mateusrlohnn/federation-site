@@ -1,4 +1,5 @@
 import PlayersView from "@/components/players/PlayersView";
+import { type TeamBrand } from "@/components/players/PlayerProfileModal";
 import { fallbackPlayers, fromRow, type HofPlayer } from "@/lib/hof";
 import {
   matchFromRow,
@@ -45,7 +46,29 @@ async function getCupStats(): Promise<Record<string, PlayerCupStats>> {
   }
 }
 
+// Marca dos times (id -> nome + logo) para exibir nos cards FIFA.
+async function getTeamBrands(): Promise<Record<string, TeamBrand>> {
+  if (!supabaseConfigured) return {};
+  try {
+    const supabase = publicClient();
+    const { data, error } = await supabase.from("teams").select("id, name, logo_url");
+    if (error || !data) return {};
+    return Object.fromEntries(
+      (data as { id: string; name: string; logo_url: string | null }[]).map((t) => [
+        t.id,
+        { name: t.name, logo: t.logo_url ?? "" },
+      ]),
+    );
+  } catch {
+    return {};
+  }
+}
+
 export default async function PlayersPage() {
-  const [players, cupStats] = await Promise.all([getPlayers(), getCupStats()]);
-  return <PlayersView players={players} cupStats={cupStats} />;
+  const [players, cupStats, teams] = await Promise.all([
+    getPlayers(),
+    getCupStats(),
+    getTeamBrands(),
+  ]);
+  return <PlayersView players={players} cupStats={cupStats} teams={teams} />;
 }

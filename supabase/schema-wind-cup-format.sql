@@ -1,4 +1,4 @@
--- ============================================================
+'-- ============================================================
 -- Federação Rebug — Formato "Wind Cup"
 -- Rode no Supabase: SQL Editor > New query > cole tudo > Run
 -- (depende de schema-teams-tournaments.sql / schema-tournament-format.sql)

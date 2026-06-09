@@ -5,8 +5,13 @@ import { createClient } from "@/lib/supabase/client";
 import { STAT_FIELDS, computePoints, emptyPlayer, fromRow, toRow, avatarUrl, type HofPlayer } from "@/lib/hof";
 import { POSITIONS, type Position } from "@/lib/teams";
 
+type TeamOption = { id: string; name: string };
+
 export default function AdminPlayersPage() {
   const [players, setPlayers] = useState<HofPlayer[]>([]);
+  const [teams, setTeams] = useState<TeamOption[]>([]);
+  // player_id -> id do time ativo onde ele joga hoje (para pré-selecionar o card atual)
+  const [currentTeam, setCurrentTeam] = useState<Record<string, string>>({});
   const [draft, setDraft] = useState<HofPlayer | null>(null);
   const [q, setQ] = useState("");
   const [busy, setBusy] = useState(false);
@@ -22,9 +27,42 @@ export default function AdminPlayersPage() {
     if (!error && data) setPlayers(data.map(fromRow));
   }, [supabase]);
 
+  const loadTeams = useCallback(async () => {
+    const { data, error } = await supabase
+      .from("teams")
+      .select("id, name, active, team_players(player_id, active)")
+      .order("name", { ascending: true });
+    if (error || !data) return;
+    setTeams(data.map((t) => ({ id: t.id as string, name: String(t.name) })));
+    // time atual = time ativo cujo elenco contém o jogador com active=true
+    const map: Record<string, string> = {};
+    for (const t of data as {
+      id: string;
+      active: boolean;
+      team_players: { player_id: string; active: boolean }[] | null;
+    }[]) {
+      if (t.active === false) continue;
+      for (const rp of t.team_players ?? []) {
+        if (rp.active !== false && !map[rp.player_id]) map[rp.player_id] = t.id;
+      }
+    }
+    setCurrentTeam(map);
+  }, [supabase]);
+
   useEffect(() => {
     load();
-  }, [load]);
+    loadTeams();
+  }, [load, loadTeams]);
+
+  // Ao selecionar um jogador para editar: pré-seleciona o time atual quando vazio.
+  function edit(p: HofPlayer) {
+    setDraft({
+      ...p,
+      cardAtualTeamId: p.cardAtualTeamId ?? (p.id ? currentTeam[p.id] ?? null : null),
+    });
+    setErr("");
+    setMsg("");
+  }
 
   async function save() {
     if (!draft) return;
@@ -95,11 +133,7 @@ export default function AdminPlayersPage() {
             {filtered.map((p) => (
               <li key={p.id ?? p.name}>
                 <button
-                  onClick={() => {
-                    setDraft({ ...p });
-                    setErr("");
-                    setMsg("");
-                  }}
+                  onClick={() => edit(p)}
                   className={`flex w-full items-center justify-between rounded-md px-2 py-1.5 text-left hover:bg-panel ${
                     draft?.id && draft.id === p.id ? "bg-panel ring-1 ring-gold" : ""
                   }`}
@@ -188,6 +222,153 @@ export default function AdminPlayersPage() {
                     />
                   </label>
                 ))}
+              </div>
+
+              {/* Cards estilo FIFA — atributos manuais */}
+              <div className="flex flex-col gap-3 border-t border-white/5 pt-3">
+                <span className="text-xs font-bold uppercase tracking-wide text-faint">
+                  Cards (FIFA Ultimate Team)
+                </span>
+                <div className="grid grid-cols-2 gap-3 sm:grid-cols-3">
+                  <label className="flex flex-col gap-1 text-xs">
+                    Overall do Auge
+                    <input
+                      type="number"
+                      min={1}
+                      max={99}
+                      value={draft.cardAugeOverall ?? ""}
+                      placeholder="ex.: 88"
+                      onChange={(e) =>
+                        setDraft({
+                          ...draft,
+                          cardAugeOverall: e.target.value === "" ? null : Number(e.target.value),
+                        })
+                      }
+                      className="rounded-md bg-panel p-2 text-white placeholder:text-faint focus:outline-none focus:ring-1 focus:ring-gold/50"
+                    />
+                  </label>
+                  <label className="flex flex-col gap-1 text-xs">
+                    Overall Atual
+                    <input
+                      type="number"
+                      min={1}
+                      max={99}
+                      value={draft.cardAtualOverall ?? ""}
+                      placeholder="ex.: 87"
+                      onChange={(e) =>
+                        setDraft({
+                          ...draft,
+                          cardAtualOverall: e.target.value === "" ? null : Number(e.target.value),
+                        })
+                      }
+                      className="rounded-md bg-panel p-2 text-white placeholder:text-faint focus:outline-none focus:ring-1 focus:ring-gold/50"
+                    />
+                  </label>
+                  <label className="flex items-center gap-2 self-end pb-2 text-xs">
+                    <input
+                      type="checkbox"
+                      checked={draft.aposentado}
+                      onChange={(e) => setDraft({ ...draft, aposentado: e.target.checked })}
+                      className="h-4 w-4 accent-gold"
+                    />
+                    Aposentado <span className="text-faint">(card branco "Icon")</span>
+                  </label>
+                </div>
+                <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+                  <div className="flex flex-col gap-3 rounded-md bg-panel/40 p-3">
+                    <span className="text-[11px] font-bold uppercase tracking-wide text-faint">
+                      Card do Auge
+                    </span>
+                    <label className="flex flex-col gap-1 text-xs">
+                      Time
+                      <select
+                        value={draft.cardAugeTeamId ?? ""}
+                        onChange={(e) =>
+                          setDraft({ ...draft, cardAugeTeamId: e.target.value || null })
+                        }
+                        className="rounded-md bg-panel p-2 text-sm text-white focus:outline-none focus:ring-1 focus:ring-gold/50"
+                      >
+                        <option value="">Sem time</option>
+                        {teams.map((t) => (
+                          <option key={t.id} value={t.id}>
+                            {t.name}
+                          </option>
+                        ))}
+                      </select>
+                    </label>
+                    <label className="flex flex-col gap-1 text-xs">
+                      Posição no card{" "}
+                      {draft.cardAugePosition == null && draft.position && (
+                        <span className="text-faint">(usa a natural)</span>
+                      )}
+                      <select
+                        value={draft.cardAugePosition ?? draft.position ?? ""}
+                        onChange={(e) =>
+                          setDraft({
+                            ...draft,
+                            cardAugePosition: (e.target.value || null) as Position | null,
+                          })
+                        }
+                        className="rounded-md bg-panel p-2 text-sm text-white focus:outline-none focus:ring-1 focus:ring-gold/50"
+                      >
+                        <option value="">Sem posição</option>
+                        {POSITIONS.map((pos) => (
+                          <option key={pos.key} value={pos.key}>
+                            {pos.label} ({pos.sigla})
+                          </option>
+                        ))}
+                      </select>
+                    </label>
+                  </div>
+                  <div className="flex flex-col gap-3 rounded-md bg-panel/40 p-3">
+                    <span className="text-[11px] font-bold uppercase tracking-wide text-faint">
+                      Card Atual
+                    </span>
+                    <label className="flex flex-col gap-1 text-xs">
+                      Time{" "}
+                      {draft.id && currentTeam[draft.id] && (
+                        <span className="text-faint">(auto: time atual do jogador)</span>
+                      )}
+                      <select
+                        value={draft.cardAtualTeamId ?? ""}
+                        onChange={(e) =>
+                          setDraft({ ...draft, cardAtualTeamId: e.target.value || null })
+                        }
+                        className="rounded-md bg-panel p-2 text-sm text-white focus:outline-none focus:ring-1 focus:ring-gold/50"
+                      >
+                        <option value="">Sem time</option>
+                        {teams.map((t) => (
+                          <option key={t.id} value={t.id}>
+                            {t.name}
+                          </option>
+                        ))}
+                      </select>
+                    </label>
+                    <label className="flex flex-col gap-1 text-xs">
+                      Posição no card{" "}
+                      {draft.cardAtualPosition == null && draft.position && (
+                        <span className="text-faint">(usa a natural)</span>
+                      )}
+                      <select
+                        value={draft.cardAtualPosition ?? draft.position ?? ""}
+                        onChange={(e) =>
+                          setDraft({
+                            ...draft,
+                            cardAtualPosition: (e.target.value || null) as Position | null,
+                          })
+                        }
+                        className="rounded-md bg-panel p-2 text-sm text-white focus:outline-none focus:ring-1 focus:ring-gold/50"
+                      >
+                        <option value="">Sem posição</option>
+                        {POSITIONS.map((pos) => (
+                          <option key={pos.key} value={pos.key}>
+                            {pos.label} ({pos.sigla})
+                          </option>
+                        ))}
+                      </select>
+                    </label>
+                  </div>
+                </div>
               </div>
 
               <div className="flex items-center justify-between border-t border-white/5 pt-3">

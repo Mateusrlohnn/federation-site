@@ -1,7 +1,8 @@
 "use client";
 
-import { useEffect } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { ACCENT } from "@/components/ui/stats";
+import FifaCard from "@/components/players/FifaCard";
 import { avatarUrl, STAT_FIELDS, type HofPlayer } from "@/lib/hof";
 import { POSITIONS } from "@/lib/teams";
 import { type PlayerCupStats } from "@/lib/tournaments";
@@ -54,26 +55,50 @@ function SectionTitle({ children }: { children: React.ReactNode }) {
   );
 }
 
+export type TeamBrand = { name: string; logo: string };
+
 export default function PlayerProfileModal({
   player,
   rank,
   cup,
+  teams = {},
   onClose,
 }: {
   player: HofPlayer | null;
   rank: number;
   cup?: PlayerCupStats;
+  teams?: Record<string, TeamBrand>;
   onClose: () => void;
 }) {
+  // Aba ativa do corpo do modal. Reinicia em "stats" sempre que troca de jogador.
+  const [tab, setTab] = useState<"stats" | "cards">("stats");
+  const playerId = player?.id ?? player?.name ?? null;
+  useEffect(() => {
+    setTab("stats");
+  }, [playerId]);
+
+  // Fecha tirando o foco do elemento que abriu o modal — evita o anel de foco
+  // (borda branca) reaparecer no jogador do Hall ao sair, sobretudo via ESC.
+  const close = useCallback(() => {
+    if (typeof document !== "undefined") {
+      (document.activeElement as HTMLElement | null)?.blur();
+    }
+    onClose();
+  }, [onClose]);
+
   useEffect(() => {
     function onKey(e: KeyboardEvent) {
-      if (e.key === "Escape") onClose();
+      if (e.key === "Escape") close();
     }
     document.addEventListener("keydown", onKey);
     return () => document.removeEventListener("keydown", onKey);
-  }, [onClose]);
+  }, [close]);
 
   if (!player) return null;
+
+  const hasCards = player.cardAugeOverall != null || player.cardAtualOverall != null;
+  const showCards = hasCards && tab === "cards";
+  const showStats = !hasCards || tab === "stats";
 
   const main = STAT_FIELDS.slice(0, 6); // titles, vices, mvp, top1, top2, top3
   const podiums = player.top1 + player.top2 + player.top3;
@@ -118,7 +143,7 @@ export default function PlayerProfileModal({
       role="dialog"
       aria-modal="true"
       aria-label={`Perfil de ${player.name}`}
-      onClick={onClose}
+      onClick={close}
       className="animate-overlay-in fixed inset-0 z-[100] flex items-center justify-center bg-black/70 p-4 backdrop-blur-sm"
     >
       <div
@@ -126,9 +151,9 @@ export default function PlayerProfileModal({
         className="animate-modal-in relative max-h-[94vh] w-full max-w-5xl overflow-y-auto rounded-lg bg-card p-6"
       >
         <button
-          onClick={onClose}
+          onClick={close}
           aria-label="Fechar"
-          className="absolute right-4 top-4 flex h-8 w-8 items-center justify-center rounded-md bg-panel text-lg text-faint hover:text-white"
+          className="absolute right-4 top-4 z-20 flex h-8 w-8 items-center justify-center rounded-md bg-panel text-lg text-faint hover:text-white"
         >
           ✕
         </button>
@@ -175,6 +200,53 @@ export default function PlayerProfileModal({
           </div>
         </div>
 
+        {/* Abas Estatísticas / Cards — só quando há cards; senão mostra direto as estatísticas */}
+        {hasCards && (
+          <div className="animate-content-in mt-5 flex gap-2" style={{ animationDelay: "80ms" }}>
+            {(["stats", "cards"] as const).map((t) => (
+              <button
+                key={t}
+                onClick={() => setTab(t)}
+                className={`rounded-md px-4 py-1.5 text-sm font-bold transition ${
+                  tab === t
+                    ? "bg-gold text-[#1a1a1e]"
+                    : "bg-panel text-faint hover:text-white"
+                }`}
+              >
+                {t === "stats" ? "Estatísticas" : "Cards"}
+              </button>
+            ))}
+          </div>
+        )}
+
+        {/* Cards estilo FIFA — Auge (ouro, ou branco "Icon" se aposentado) + Atual */}
+        {showCards && (
+          <section className="animate-content-in mt-5" style={{ animationDelay: "90ms" }}>
+            <div className="mx-auto grid max-w-md grid-cols-2 gap-4 py-2 sm:gap-6">
+              <FifaCard
+                player={player}
+                overall={player.cardAugeOverall}
+                label="Auge"
+                isAuge
+                position={player.cardAugePosition}
+                teamLogo={player.cardAugeTeamId ? teams[player.cardAugeTeamId]?.logo : undefined}
+                teamName={player.cardAugeTeamId ? teams[player.cardAugeTeamId]?.name : undefined}
+              />
+              <FifaCard
+                player={player}
+                overall={player.cardAtualOverall}
+                label="Atual"
+                isAuge={false}
+                position={player.cardAtualPosition}
+                teamLogo={player.cardAtualTeamId ? teams[player.cardAtualTeamId]?.logo : undefined}
+                teamName={player.cardAtualTeamId ? teams[player.cardAtualTeamId]?.name : undefined}
+              />
+            </div>
+          </section>
+        )}
+
+        {showStats && (
+        <>
         {/* Estatísticas em copas — partidas, gols, assistências e clean sheets */}
         <section className="animate-content-in mt-5" style={{ animationDelay: "100ms" }}>
           <SectionTitle>Em copas (todas as súmulas)</SectionTitle>
@@ -319,6 +391,8 @@ export default function PlayerProfileModal({
             </section>
           </div>
         </div>
+        </>
+        )}
       </div>
     </div>
   );

@@ -19,9 +19,31 @@ export type HofPlayer = {
   t2Academy: number;
   t3Academy: number;
   points: number;
+  // Cards estilo FIFA (preenchidos manualmente pelo admin) ----
+  cardAugeOverall: number | null; // overall no auge (ex.: 88)
+  cardAtualOverall: number | null; // overall atual (ex.: 87)
+  aposentado: boolean; // true = card do auge vira branco "Icon"
+  cardAugeTeamId: string | null; // time exibido no card do auge
+  cardAtualTeamId: string | null; // time exibido no card atual
+  cardAugePosition: Position | null; // posição no card do auge (cai na natural se nulo)
+  cardAtualPosition: Position | null; // posição no card atual (cai na natural se nulo)
 };
 
-export type StatKey = Exclude<keyof HofPlayer, "id" | "name" | "nick" | "points" | "position">;
+export type StatKey = Exclude<
+  keyof HofPlayer,
+  | "id"
+  | "name"
+  | "nick"
+  | "points"
+  | "position"
+  | "cardAugeOverall"
+  | "cardAtualOverall"
+  | "aposentado"
+  | "cardAugeTeamId"
+  | "cardAtualTeamId"
+  | "cardAugePosition"
+  | "cardAtualPosition"
+>;
 
 /** Single source of truth: app field <-> DB column <-> scoring weight. */
 export const STAT_FIELDS: { key: StatKey; col: string; label: string; weight: number }[] = [
@@ -75,6 +97,13 @@ export function fromRow(r: Record<string, unknown>): HofPlayer {
     name: String(r.name),
     nick: (r.nick as string)?.trim() || String(r.name),
     position: asPosition(r.position),
+    cardAugeOverall: r.card_auge_overall != null ? Number(r.card_auge_overall) : null,
+    cardAtualOverall: r.card_atual_overall != null ? Number(r.card_atual_overall) : null,
+    aposentado: Boolean(r.status_aposentado),
+    cardAugeTeamId: (r.card_auge_team_id as string) ?? null,
+    cardAtualTeamId: (r.card_atual_team_id as string) ?? null,
+    cardAugePosition: asPosition(r.card_auge_position),
+    cardAtualPosition: asPosition(r.card_atual_position),
   } as HofPlayer;
   for (const f of STAT_FIELDS) p[f.key] = Number(r[f.col]) || 0;
   p.points = r.points != null ? Number(r.points) : computePoints(p);
@@ -82,11 +111,18 @@ export function fromRow(r: Record<string, unknown>): HofPlayer {
 }
 
 /** Map a HofPlayer to a Supabase row (snake_case), excluding generated/id columns. */
-export function toRow(p: HofPlayer): Record<string, string | number | null> {
-  const r: Record<string, string | number | null> = {
+export function toRow(p: HofPlayer): Record<string, string | number | boolean | null> {
+  const r: Record<string, string | number | boolean | null> = {
     name: p.name.trim(),
     nick: (p.nick || p.name).trim(),
     position: p.position ?? null,
+    card_auge_overall: p.cardAugeOverall ?? null,
+    card_atual_overall: p.cardAtualOverall ?? null,
+    status_aposentado: !!p.aposentado,
+    card_auge_team_id: p.cardAugeTeamId ?? null,
+    card_atual_team_id: p.cardAtualTeamId ?? null,
+    card_auge_position: p.cardAugePosition ?? null,
+    card_atual_position: p.cardAtualPosition ?? null,
   };
   for (const f of STAT_FIELDS) r[f.col] = Number(p[f.key]) || 0;
   return r;
@@ -94,7 +130,19 @@ export function toRow(p: HofPlayer): Record<string, string | number | null> {
 
 /** Empty player for the "create" form. */
 export function emptyPlayer(): HofPlayer {
-  const p = { name: "", nick: "", position: null, points: 0 } as HofPlayer;
+  const p = {
+    name: "",
+    nick: "",
+    position: null,
+    points: 0,
+    cardAugeOverall: null,
+    cardAtualOverall: null,
+    aposentado: false,
+    cardAugeTeamId: null,
+    cardAtualTeamId: null,
+    cardAugePosition: null,
+    cardAtualPosition: null,
+  } as HofPlayer;
   for (const f of STAT_FIELDS) p[f.key] = 0;
   return p;
 }
@@ -108,6 +156,13 @@ export const fallbackPlayers: HofPlayer[] = (
     nick: (p.nick as string)?.trim() || String(p.name),
     position: asPosition(p.position),
     points: Number(p.points) || 0,
+    cardAugeOverall: p.cardAugeOverall != null ? Number(p.cardAugeOverall) : null,
+    cardAtualOverall: p.cardAtualOverall != null ? Number(p.cardAtualOverall) : null,
+    aposentado: Boolean(p.aposentado),
+    cardAugeTeamId: (p.cardAugeTeamId as string) ?? null,
+    cardAtualTeamId: (p.cardAtualTeamId as string) ?? null,
+    cardAugePosition: asPosition(p.cardAugePosition),
+    cardAtualPosition: asPosition(p.cardAtualPosition),
   } as HofPlayer;
   for (const f of STAT_FIELDS) o[f.key] = Number(p[f.key]) || 0;
   return o;

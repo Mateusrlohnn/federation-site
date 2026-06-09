@@ -3,7 +3,7 @@
 import { useState } from "react";
 import Icon, { ICONS } from "@/components/ui/Icon";
 import { ACCENT, PerfBar } from "@/components/ui/stats";
-import PlayerProfileModal from "@/components/players/PlayerProfileModal";
+import PlayerProfileModal, { type TeamBrand } from "@/components/players/PlayerProfileModal";
 import PlayerComparisonModal from "@/components/players/PlayerComparisonModal";
 import maxwidth from "@/styles/maxwidth.module.css";
 import { avatarUrl, type HofPlayer, type StatKey } from "@/lib/hof";
@@ -36,9 +36,11 @@ function pageWindow(current: number, total: number): (number | "…")[] {
 export default function PlayersView({
   players,
   cupStats = {},
+  teams = {},
 }: {
   players: HofPlayer[];
   cupStats?: Record<string, PlayerCupStats>;
+  teams?: Record<string, TeamBrand>;
 }) {
   const [q, setQ] = useState("");
   const [page, setPage] = useState(1);
@@ -286,6 +288,7 @@ export default function PlayersView({
         player={selected?.p ?? null}
         rank={selected?.rank ?? 0}
         cup={selected?.p.id ? cupStats[selected.p.id] : undefined}
+        teams={teams}
         onClose={() => setSelected(null)}
       />
 
