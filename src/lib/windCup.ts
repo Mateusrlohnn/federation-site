@@ -24,7 +24,7 @@
 import {
   computeStandings,
   roundRobinFixtures,
-  isFinal,
+  finalsByDate,
   pairKey,
   type MatchLike,
   type StandingRow,
@@ -43,21 +43,6 @@ export const WIND_CUP_MATCHES_PER_TEAM = 7; // todos contra todos, só ida
 //   - a liga usa o PRIMEIRO confronto (cronológico) de cada par;
 //   - o bracket usa o ÚLTIMO (a revanche), ver buildWindCupFromMatches.
 // ---------------------------------------------------------------------------
-
-/** Ordena as partidas finalizadas por data (estável p/ as sem data). */
-function finalsByDate(matches: MatchLike[]): MatchLike[] {
-  return matches
-    .filter((m) => isFinal(m))
-    .map((m, i) => ({ m, i }))
-    .sort(
-      (a, b) =>
-        (a.m.playedAt ?? "").localeCompare(b.m.playedAt ?? "") ||
-        // sem data: ordem de cadastro (liga lançada antes dos playoffs)
-        (a.m.createdAt ?? "").localeCompare(b.m.createdAt ?? "") ||
-        a.i - b.i,
-    )
-    .map((x) => x.m);
-}
 
 /**
  * Jogos da fase de pontos: o 1º confronto (cronológico) de cada par. A 2ª vez

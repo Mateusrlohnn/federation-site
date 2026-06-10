@@ -56,6 +56,25 @@ export function isFinal(m: MatchLike): boolean {
   return !m.scheduled && !m.isLive && !!m.homeTeamId && !!m.awayTeamId;
 }
 
+/**
+ * Partidas finalizadas em ordem cronológica (estável). Sem `playedAt`, cai na
+ * data de cadastro (`createdAt`) e, por fim, na ordem original do array — assim
+ * o 1º confronto de um par é sempre o mais antigo, distinguindo fase de grupos
+ * (lançada antes) de revanches do mata-mata (lançadas depois).
+ */
+export function finalsByDate(matches: MatchLike[]): MatchLike[] {
+  return matches
+    .filter((m) => isFinal(m))
+    .map((m, i) => ({ m, i }))
+    .sort(
+      (a, b) =>
+        (a.m.playedAt ?? "").localeCompare(b.m.playedAt ?? "") ||
+        (a.m.createdAt ?? "").localeCompare(b.m.createdAt ?? "") ||
+        a.i - b.i,
+    )
+    .map((x) => x.m);
+}
+
 export const BYE = "__BYE__";
 
 export type Pairing = { home: string; away: string }; // away === BYE => folga
@@ -252,6 +271,47 @@ export function splitGroups(teamIds: string[], numGroups = suggestGroupCount(tea
     else g += dir;
   }
   return groups;
+}
+
+/**
+ * Separa as partidas finalizadas entre FASE DE GRUPOS e MATA-MATA.
+ *
+ * A fase de grupos é turno único (1 jogo por par). O mata-mata, porém, pode
+ * reencontrar um par do MESMO grupo (ex.: semifinal 1ºG1 × 3ºG1). Sem separar,
+ * a revanche eliminatória contaminaria a tabela do grupo E o chaveamento leria
+ * o jogo de grupo no lugar do mata-mata. Regra:
+ *   - 1º confronto (cronológico) de um par INTRAGRUPO  → fase de grupos;
+ *   - qualquer reencontro do mesmo par                 → mata-mata;
+ *   - pares de grupos diferentes (ou de times sem grupo) → sempre mata-mata.
+ *
+ * Use `groupMatches` para as tabelas e `knockoutMatches` para o bracket: assim
+ * as duas fases nunca mais se misturam, em qualquer formato com grupos.
+ */
+export function splitGroupKnockoutMatches(
+  groups: string[][],
+  matches: MatchLike[],
+): { groupMatches: MatchLike[]; knockoutMatches: MatchLike[] } {
+  const groupOf = new Map<string, number>();
+  groups.forEach((ids, gi) => ids.forEach((id) => groupOf.set(id, gi)));
+  const seen = new Set<string>();
+  const groupMatches: MatchLike[] = [];
+  const knockoutMatches: MatchLike[] = [];
+  for (const m of finalsByDate(matches)) {
+    const h = m.homeTeamId as string;
+    const a = m.awayTeamId as string;
+    const gh = groupOf.get(h);
+    const ga = groupOf.get(a);
+    if (gh != null && gh === ga) {
+      const k = pairKey(h, a);
+      if (!seen.has(k)) {
+        seen.add(k);
+        groupMatches.push(m);
+        continue;
+      }
+    }
+    knockoutMatches.push(m);
+  }
+  return { groupMatches, knockoutMatches };
 }
 
 // ---------------------------------------------------------------------------
@@ -807,20 +867,25 @@ export function tournamentPhases(
     pushFixtures(roundRobinFixtures(teamIds, matches));
   } else if (format === "grupos_mata_mata" || format === "libertadores") {
     const groups = groupsOf();
-    for (const g of groups) pushFixtures(roundRobinFixtures(g.teamIds, matches), `${g.label} · `);
+    // Fase de grupos só vê os jogos de grupo; o mata-mata, só as revanches.
+    const { groupMatches, knockoutMatches } = splitGroupKnockoutMatches(
+      groups.map((g) => g.teamIds),
+      matches,
+    );
+    for (const g of groups) pushFixtures(roundRobinFixtures(g.teamIds, groupMatches), `${g.label} · `);
     if (format === "libertadores") {
-      const standings = groups.map((g) => computeStandings(g.teamIds, matches).map((r) => r.teamId));
-      pushBracket(buildLibertadoresKnockout(standings, matches));
+      const standings = groups.map((g) => computeStandings(g.teamIds, groupMatches).map((r) => r.teamId));
+      pushBracket(buildLibertadoresKnockout(standings, knockoutMatches));
     } else {
       const firsts: string[] = [];
       const seconds: string[] = [];
       for (const g of groups) {
-        const s = computeStandings(g.teamIds, matches);
+        const s = computeStandings(g.teamIds, groupMatches);
         if (s[0]) firsts.push(s[0].teamId);
         if (s[1]) seconds.push(s[1].teamId);
       }
       const seeds = [...firsts, ...seconds];
-      if (seeds.length >= 2) pushBracket(buildKnockout(seeds, matches));
+      if (seeds.length >= 2) pushBracket(buildKnockout(seeds, knockoutMatches));
     }
   } else if (format === "mata_mata") {
     const standings = computeStandings(teamIds, matches);

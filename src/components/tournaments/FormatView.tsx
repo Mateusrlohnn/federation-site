@@ -7,6 +7,7 @@ import {
   splitGroups,
   buildKnockout,
   buildLibertadoresKnockout,
+  splitGroupKnockoutMatches,
   nextPowerOfTwo,
   roundRobinFixtures,
   type FixtureRound,
@@ -639,15 +640,21 @@ export default function FormatView({
   // ---- FASE DE GRUPOS + MATA-MATA ----
   if (format === "grupos_mata_mata") {
     const groups = buildGroups(teams, groupCount);
+    // Separa fase de grupos do mata-mata: jogos intragrupo do mata-mata não
+    // entram na tabela, e o bracket não lê o jogo da fase de grupos.
+    const { groupMatches, knockoutMatches } = splitGroupKnockoutMatches(
+      groups.map((g) => g.teamIds),
+      matches,
+    );
     const firsts: string[] = [];
     const seconds: string[] = [];
     for (const g of groups) {
-      const s = computeStandings(g.teamIds, matches);
+      const s = computeStandings(g.teamIds, groupMatches);
       if (s[0]) firsts.push(s[0].teamId);
       if (s[1]) seconds.push(s[1].teamId);
     }
     const seeds = [...firsts, ...seconds];
-    const knockout = seeds.length >= 2 ? buildKnockout(seeds, matches) : [];
+    const knockout = seeds.length >= 2 ? buildKnockout(seeds, knockoutMatches) : [];
     return (
       <div className="flex flex-col gap-6">
         <div className="grid gap-3 sm:grid-cols-2">
@@ -657,7 +664,7 @@ export default function FormatView({
                 {g.label}
               </div>
               <StandingsTable
-                rows={computeStandings(g.teamIds, matches)}
+                rows={computeStandings(g.teamIds, groupMatches)}
                 byId={byId}
                 qualify={2}
               />
@@ -668,7 +675,7 @@ export default function FormatView({
         {groups.map((g) => (
           <FixturesByRound
             key={`fix-${g.label}`}
-            rounds={roundRobinFixtures(g.teamIds, matches)}
+            rounds={roundRobinFixtures(g.teamIds, groupMatches)}
             byId={byId}
             title={`${g.label} — jogos por rodada`}
           />
@@ -717,10 +724,16 @@ export default function FormatView({
   // ---- GRUPOS + MATA-MATA (LIBERTADORES): 1º à semi; 2º e 3º nas quartas ----
   if (format === "libertadores") {
     const groups = buildGroups(teams, groupCount);
-    const standingsByGroup = groups.map((g) => computeStandings(g.teamIds, matches));
+    // Fase de grupos só conta jogos de grupo; o mata-mata, só as revanches —
+    // assim confrontos intragrupo do mata-mata não contaminam a tabela.
+    const { groupMatches, knockoutMatches } = splitGroupKnockoutMatches(
+      groups.map((g) => g.teamIds),
+      matches,
+    );
+    const standingsByGroup = groups.map((g) => computeStandings(g.teamIds, groupMatches));
     const knockout = buildLibertadoresKnockout(
       standingsByGroup.map((s) => s.map((r) => r.teamId)),
-      matches,
+      knockoutMatches,
     );
     // 1º (gold) vai direto à semi; 2º e 3º (azul) disputam as quartas.
     const libZone = (pos: number) =>
