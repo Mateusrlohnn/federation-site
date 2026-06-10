@@ -16,7 +16,7 @@ async function getData(id: string): Promise<ScreenData | null> {
       supabase
         .from("tournaments")
         .select(
-          "*, tournament_teams(team_id, seed, group_label), matches(*, match_events(player_id, team_id, type, minute, secondary_player_id), match_lineups(player_id, team_id, position, is_starter, rating)), tournament_messages(body), tournament_awards(award_key, player_id)",
+          "*, tournament_teams(team_id, seed, group_label), matches(*, match_events(player_id, team_id, type, minute, secondary_player_id), match_lineups(player_id, team_id, position, is_starter, rating)), tournament_messages(body), tournament_awards(award_key, player_id), tournament_winner_players(player_id, kind), tournament_team_players(team_id, player_id, position)",
         )
         .eq("id", id)
         .single(),
@@ -84,6 +84,28 @@ async function getData(id: string): Promise<ScreenData | null> {
       },
     );
 
+    // jogadores campeões / vice-campeões desta copa
+    const championPlayers: string[] = [];
+    const runnerUpPlayers: string[] = [];
+    ((r.tournament_winner_players as { player_id: string; kind: string }[] | undefined) ?? []).forEach(
+      (x) => {
+        (x.kind === "runner_up" ? runnerUpPlayers : championPlayers).push(x.player_id);
+      },
+    );
+
+    // elenco por time NESTA copa (escolhido a dedo)
+    const teamSquads: ScreenData["teamSquads"] = {};
+    (
+      (r.tournament_team_players as
+        | { team_id: string; player_id: string; position: unknown }[]
+        | undefined) ?? []
+    ).forEach((x) => {
+      (teamSquads[x.team_id] ??= []).push({
+        playerId: x.player_id,
+        position: asPosition(x.position),
+      });
+    });
+
     return {
       id: r.id as string,
       name: String(r.name),
@@ -106,7 +128,10 @@ async function getData(id: string): Promise<ScreenData | null> {
       teamNames,
       teamLogos,
       teamRosters,
+      teamSquads,
       awards,
+      championPlayers,
+      runnerUpPlayers,
     };
   } catch {
     return null;

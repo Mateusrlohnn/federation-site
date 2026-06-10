@@ -19,6 +19,7 @@ export type Team = {
   id?: string;
   name: string;
   logoUrl: string; // foto do time (URL pública no Storage)
+  ownerId: string | null; // "dono" do time (um jogador) — organiza e diferencia times homônimos
   active: boolean; // ON aparece na aba Times; OFF = time histórico (só torneios)
   titles: number;
   runnerUps: number;
@@ -40,6 +41,7 @@ export function emptyTeam(): Team {
   return {
     name: "",
     logoUrl: "",
+    ownerId: null,
     active: true,
     titles: 0,
     runnerUps: 0,
@@ -63,6 +65,7 @@ export function teamFromRow(r: Record<string, unknown>): Team {
     id: r.id as string,
     name: String(r.name),
     logoUrl: (r.logo_url as string) ?? "",
+    ownerId: (r.owner_id as string) ?? null,
     active: r.active !== false,
     titles: Number(r.titles) || 0,
     runnerUps: Number(r.runner_ups) || 0,
@@ -81,6 +84,7 @@ export function teamToRow(t: Team): Record<string, string | number | boolean | n
   return {
     name: t.name.trim(),
     logo_url: t.logoUrl?.trim() || null,
+    owner_id: t.ownerId ?? null,
     active: t.active,
     titles: Number(t.titles) || 0,
     runner_ups: Number(t.runnerUps) || 0,

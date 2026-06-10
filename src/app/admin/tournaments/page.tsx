@@ -62,6 +62,13 @@ export default function AdminTournamentsPage() {
   const [draft, setDraft] = useState<Tournament | null>(null);
   // teamId -> rótulo do grupo ("Grupo A"...) para atribuição manual nos formatos com grupos
   const [teamGroups, setTeamGroups] = useState<Record<string, string>>({});
+  // jogadores campeões / vice-campeões DESTA copa (subconjunto do elenco do time)
+  const [championPlayers, setChampionPlayers] = useState<string[]>([]);
+  const [runnerUpPlayers, setRunnerUpPlayers] = useState<string[]>([]);
+  // elenco por time NESTA copa: teamId -> [{ playerId, position(naquela copa) }]
+  const [teamSquads, setTeamSquads] = useState<
+    Record<string, { playerId: string; position: Position | null }[]>
+  >({});
   const [matches, setMatches] = useState<Match[]>([]);
   const [messages, setMessages] = useState<TournamentMessage[]>([]);
   const [awards, setAwards] = useState<Record<string, string>>({}); // award_key -> player_id
@@ -131,7 +138,7 @@ export default function AdminTournamentsPage() {
 
   const loadSub = useCallback(
     async (tid: string) => {
-      const [m, ms, aw, tt] = await Promise.all([
+      const [m, ms, aw, tt, wp, sq] = await Promise.all([
         supabase
           .from("matches")
           .select(
@@ -146,6 +153,14 @@ export default function AdminTournamentsPage() {
           .order("created_at", { ascending: false }),
         supabase.from("tournament_awards").select("award_key, player_id").eq("tournament_id", tid),
         supabase.from("tournament_teams").select("team_id, group_label").eq("tournament_id", tid),
+        supabase
+          .from("tournament_winner_players")
+          .select("player_id, kind")
+          .eq("tournament_id", tid),
+        supabase
+          .from("tournament_team_players")
+          .select("team_id, player_id, position")
+          .eq("tournament_id", tid),
       ]);
       const groups: Record<string, string> = {};
       if (!tt.error && tt.data)
@@ -153,6 +168,23 @@ export default function AdminTournamentsPage() {
           if (r.group_label) groups[r.team_id] = r.group_label;
         });
       setTeamGroups(groups);
+      const champ: string[] = [];
+      const runner: string[] = [];
+      if (!wp.error && wp.data)
+        (wp.data as { player_id: string; kind: string }[]).forEach((r) => {
+          (r.kind === "runner_up" ? runner : champ).push(r.player_id);
+        });
+      setChampionPlayers(champ);
+      setRunnerUpPlayers(runner);
+      const squads: Record<string, { playerId: string; position: Position | null }[]> = {};
+      if (!sq.error && sq.data)
+        (sq.data as { team_id: string; player_id: string; position: unknown }[]).forEach((r) => {
+          (squads[r.team_id] ??= []).push({
+            playerId: r.player_id,
+            position: (r.position as Position | null) ?? null,
+          });
+        });
+      setTeamSquads(squads);
       setMatches(!m.error && m.data ? m.data.map(matchFromRow) : []);
       setMessages(
         !ms.error && ms.data
@@ -187,6 +219,9 @@ export default function AdminTournamentsPage() {
     setMessages([]);
     setAwards({});
     setTeamGroups({});
+    setChampionPlayers([]);
+    setRunnerUpPlayers([]);
+    setTeamSquads({});
     if (t?.id) loadSub(t.id);
   }
 
@@ -313,7 +348,13 @@ export default function AdminTournamentsPage() {
     const seen = new Set<string>();
     for (const teamId of [newMatch.homeTeamId, newMatch.awayTeamId]) {
       if (!teamId) continue;
-      for (const { playerId: pid } of rosters[teamId] ?? []) {
+      // elegíveis = elenco global do time + elenco salvo desta copa (época pode ter
+      // jogadores que não estão no elenco global do time).
+      const ids = [
+        ...(rosters[teamId] ?? []).map((x) => x.playerId),
+        ...(teamSquads[teamId] ?? []).map((x) => x.playerId),
+      ];
+      for (const pid of ids) {
         if (seen.has(pid)) continue;
         seen.add(pid);
         out.push({ id: pid, name: playerName(pid), teamId });
@@ -786,6 +827,32 @@ export default function AdminTournamentsPage() {
     if (error) return setErr(error.message);
     setMsg("Grupos salvos.");
     await loadSub(tid);
+  }
+
+  // Salva os jogadores campeões/vices desta copa (subconjunto do elenco vencedor).
+  async function saveWinnerPlayers() {
+    if (!draft?.id) return;
+    setBusy(true);
+    setErr("");
+    setMsg("");
+    const tid = draft.id;
+    // um jogador não pode ser campeão e vice na mesma copa (PK = tournament_id+player_id)
+    const champSet = new Set(championPlayers);
+    const vice = runnerUpPlayers.filter((id) => !champSet.has(id));
+    await supabase.from("tournament_winner_players").delete().eq("tournament_id", tid);
+    const rows = [
+      ...championPlayers.map((player_id) => ({ tournament_id: tid, player_id, kind: "champion" })),
+      ...vice.map((player_id) => ({ tournament_id: tid, player_id, kind: "runner_up" })),
+    ];
+    if (rows.length) {
+      const { error } = await supabase.from("tournament_winner_players").insert(rows);
+      if (error) {
+        setBusy(false);
+        return setErr(error.message);
+      }
+    }
+    setBusy(false);
+    setMsg("Campeões/vices da copa salvos.");
   }
 
   // pódio: define/limpa um prêmio no estado local
@@ -2020,6 +2087,123 @@ export default function AdminTournamentsPage() {
                       Salvar pódio
                     </button>
                   </div>
+
+                  {/* ELENCO POR TIME: editado em Admin → Times (por campeonato) */}
+                  {draft.teamIds.length > 0 && (
+                    <div className="rounded-lg bg-card p-4">
+                      <h3 className="mb-1 text-sm font-bold">👥 Elenco dos times</h3>
+                      <p className="text-[11px] text-faint">
+                        O elenco de cada time <b className="text-white">nesta copa</b> é editado em{" "}
+                        <b className="text-white">Admin → Times</b>: abra o time e, no seletor{" "}
+                        <b className="text-white">&quot;Editando o elenco de&quot;</b>, escolha este
+                        campeonato. As mudanças valem só para esta copa. Aqui você cuida apenas da
+                        configuração do torneio (times, grupos, partidas, pódio).
+                      </p>
+                    </div>
+                  )}
+
+                  {/* JOGADORES CAMPEÕES / VICE-CAMPEÕES DA COPA */}
+                  {(draft.championTeamId || draft.runnerUpTeamId) && (
+                    <div className="rounded-lg bg-card p-4">
+                      <h3 className="mb-1 text-sm font-bold">🏅 Jogadores campeões / vice-campeões</h3>
+                      <p className="mb-3 text-[11px] text-faint">
+                        Marque quem realmente levantou a taça nesta edição (o elenco vencedor desta
+                        copa). Assim não é preciso duplicar o time nem marcar todo o histórico do
+                        elenco como campeão.
+                      </p>
+                      <div className="grid gap-3 sm:grid-cols-2">
+                        {[
+                          {
+                            teamId: draft.championTeamId,
+                            title: "🏆 Campeões",
+                            selected: championPlayers,
+                            setSelected: setChampionPlayers,
+                          },
+                          {
+                            teamId: draft.runnerUpTeamId,
+                            title: "🥈 Vice-campeões",
+                            selected: runnerUpPlayers,
+                            setSelected: setRunnerUpPlayers,
+                          },
+                        ].map((col) => {
+                          const roster = col.teamId ? rosters[col.teamId] ?? [] : [];
+                          return (
+                            <div key={col.title} className="flex flex-col gap-2 rounded-md bg-panel p-2">
+                              <div className="flex items-center justify-between gap-2">
+                                <span className="truncate text-[11px] font-bold uppercase tracking-wide text-faint">
+                                  {col.title}
+                                  {col.teamId && ` · ${teamName(col.teamId)}`}
+                                </span>
+                                {col.teamId && roster.length > 0 && (
+                                  <span className="flex shrink-0 gap-1">
+                                    <button
+                                      type="button"
+                                      onClick={() => col.setSelected(roster.map((m) => m.playerId))}
+                                      className="rounded bg-base px-1.5 py-0.5 text-[10px] text-faint hover:text-white"
+                                    >
+                                      Todos
+                                    </button>
+                                    <button
+                                      type="button"
+                                      onClick={() => col.setSelected([])}
+                                      className="rounded bg-base px-1.5 py-0.5 text-[10px] text-faint hover:text-white"
+                                    >
+                                      Limpar
+                                    </button>
+                                  </span>
+                                )}
+                              </div>
+                              {!col.teamId ? (
+                                <span className="text-[11px] text-faint">
+                                  Defina o time {col.title.includes("Vice") ? "vice-campeão" : "campeão"} acima.
+                                </span>
+                              ) : roster.length === 0 ? (
+                                <span className="text-[11px] text-faint">
+                                  Sem elenco cadastrado para este time.
+                                </span>
+                              ) : (
+                                <ul className="flex max-h-[220px] flex-col gap-0.5 overflow-y-auto">
+                                  {roster.map((m) => {
+                                    const on = col.selected.includes(m.playerId);
+                                    return (
+                                      <li key={m.playerId}>
+                                        <button
+                                          type="button"
+                                          onClick={() =>
+                                            col.setSelected(
+                                              on
+                                                ? col.selected.filter((x) => x !== m.playerId)
+                                                : [...col.selected, m.playerId],
+                                            )
+                                          }
+                                          className={`flex w-full items-center justify-between rounded px-2 py-1 text-left text-xs hover:bg-base ${
+                                            on ? "text-gold" : ""
+                                          }`}
+                                        >
+                                          <span className="truncate">{playerName(m.playerId)}</span>
+                                          <span>{on ? "✓" : "+"}</span>
+                                        </button>
+                                      </li>
+                                    );
+                                  })}
+                                </ul>
+                              )}
+                              <span className="text-[10px] text-faint">
+                                {col.selected.length} marcado(s)
+                              </span>
+                            </div>
+                          );
+                        })}
+                      </div>
+                      <button
+                        onClick={saveWinnerPlayers}
+                        disabled={busy}
+                        className="mt-3 rounded-md bg-gold px-4 py-2 text-xs font-bold text-[#1a1a1e] transition-transform hover:scale-[1.02] disabled:opacity-50"
+                      >
+                        Salvar campeões/vices
+                      </button>
+                    </div>
+                  )}
 
                   {/* MENSAGENS */}
                   <div className="rounded-lg bg-card p-4">

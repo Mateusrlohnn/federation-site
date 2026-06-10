@@ -27,7 +27,9 @@ async function getData(): Promise<{ teams: TeamDetail[]; cups: CupEntry[] }> {
         .order("titles", { ascending: false }),
       supabase
         .from("tournaments")
-        .select("id, name, status, image_url, champion_team_id, tournament_teams(team_id)")
+        .select(
+          "id, name, status, image_url, champion_team_id, runner_up_team_id, tournament_teams(team_id)",
+        )
         .order("created_at", { ascending: false }),
       supabase
         .from("matches")
@@ -85,6 +87,28 @@ async function getData(): Promise<{ teams: TeamDetail[]; cups: CupEntry[] }> {
       }
     }
 
+    // status do time DERIVADO das copas: títulos (champion), vices (runner_up)
+    // e campeonatos jogados (toda participação em tournament_teams).
+    const titlesOf = new Map<string, number>();
+    const vicesOf = new Map<string, number>();
+    const playedOf = new Map<string, number>();
+    const bump = (map: Map<string, number>, key: string | null) => {
+      if (key) map.set(key, (map.get(key) ?? 0) + 1);
+    };
+    (
+      (tour.data as
+        | {
+            champion_team_id: string | null;
+            runner_up_team_id: string | null;
+            tournament_teams: { team_id: string }[] | null;
+          }[]
+        | undefined) ?? []
+    ).forEach((c) => {
+      bump(titlesOf, c.champion_team_id);
+      bump(vicesOf, c.runner_up_team_id);
+      for (const tt of c.tournament_teams ?? []) bump(playedOf, tt.team_id);
+    });
+
     const teams: TeamDetail[] = !t.error && t.data
       ? t.data.map((r: Record<string, unknown>) => {
           const id = r.id as string;
@@ -103,8 +127,9 @@ async function getData(): Promise<{ teams: TeamDetail[]; cups: CupEntry[] }> {
             id,
             name: String(r.name),
             logo: (r.logo_url as string) ?? "",
-            titles: Number(r.titles) || 0,
-            runnerUps: Number(r.runner_ups) || 0,
+            titles: titlesOf.get(id) ?? 0,
+            runnerUps: vicesOf.get(id) ?? 0,
+            championships: playedOf.get(id) ?? 0,
             wins: tr.w,
             losses: tr.l,
             draws: tr.d,
@@ -130,6 +155,11 @@ async function getData(): Promise<{ teams: TeamDetail[]; cups: CupEntry[] }> {
           };
         })
       : [];
+    // ordena pelo nº de títulos DERIVADO (a query ordenava pela coluna manual)
+    teams.sort(
+      (a, b) =>
+        b.titles - a.titles || b.championships - a.championships || a.name.localeCompare(b.name),
+    );
 
     const cups: CupEntry[] = !tour.error && tour.data
       ? tour.data.map((r: Record<string, unknown>) => ({
@@ -138,6 +168,7 @@ async function getData(): Promise<{ teams: TeamDetail[]; cups: CupEntry[] }> {
           status: String(r.status),
           image: (r.image_url as string) ?? "",
           championTeamId: (r.champion_team_id as string) ?? null,
+          runnerUpTeamId: (r.runner_up_team_id as string) ?? null,
           teamIds: ((r.tournament_teams as { team_id: string }[] | undefined) ?? []).map(
             (x) => x.team_id,
           ),

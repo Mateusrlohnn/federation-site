@@ -61,7 +61,11 @@ export type ScreenData = {
   teamNames: Record<string, string>;
   teamLogos: Record<string, string>;
   teamRosters: Record<string, { playerId: string; position: Position | null; active: boolean }[]>;
+  // elenco por time NESTA copa (escolhido a dedo); vazio = cai no elenco global do time
+  teamSquads: Record<string, { playerId: string; position: Position | null }[]>;
   awards: Record<string, string>; // award_key -> player_id (pódio atribuído pelo admin)
+  championPlayers: string[]; // jogadores campeões DESTA copa (subconjunto do elenco)
+  runnerUpPlayers: string[]; // jogadores vice-campeões DESTA copa
 };
 
 const MEDALS = ["#ffb300", "#c7ccd1", "#cd7f32"]; // ouro, prata, bronze
@@ -404,6 +408,29 @@ export default function TournamentScreen({ data }: { data: ScreenData }) {
     pos ? POSITIONS.find((p) => p.key === pos)?.sigla ?? null : null;
   const POS_RANK = ["GK", "ZAG", "MID", "ATK"];
 
+  // Elenco derivado de cada time NESTA copa: todos que apareceram em escalações ou
+  // eventos das partidas desta copa. Usado como fallback quando a partida não tem
+  // escalação registrada nem elenco-da-copa salvo — assim a copa NUNCA usa o elenco
+  // global (compartilhado entre copas) e fica imune a edições feitas nele.
+  const derivedSquadByTeam = new Map<string, Map<string, Position | null>>();
+  {
+    const add = (teamId: string | null, pid: string, pos: Position | null) => {
+      if (!teamId) return;
+      let mp = derivedSquadByTeam.get(teamId);
+      if (!mp) derivedSquadByTeam.set(teamId, (mp = new Map()));
+      if (!mp.has(pid)) mp.set(pid, pos);
+    };
+    for (const mt of data.matches) {
+      for (const l of mt.lineups)
+        add(l.teamId, l.playerId, l.position ?? data.playerPositions[l.playerId] ?? null);
+      for (const e of mt.events) {
+        add(e.teamId, e.playerId, data.playerPositions[e.playerId] ?? null);
+        if (e.type === "substitution" && e.outPlayerId)
+          add(e.teamId, e.outPlayerId, data.playerPositions[e.outPlayerId] ?? null);
+      }
+    }
+  }
+
   // Monta a súmula completa: elenco em campo por posição + eventos de cada jogador.
   function buildSheet(m: Match): SheetData {
     const lines = playerLines(m.events);
@@ -427,6 +454,7 @@ export default function TournamentScreen({ data }: { data: ScreenData }) {
         seen.add(pid);
         ids.push(pid);
       };
+      const cupSquad = teamId ? data.teamSquads[teamId] ?? [] : [];
       if (lineupRows.length) {
         // escalação registrada nesta partida: só quem foi escalado
         for (const l of lineupRows) {
@@ -434,12 +462,20 @@ export default function TournamentScreen({ data }: { data: ScreenData }) {
           posOf.set(l.playerId, l.position);
           ratingOf.set(l.playerId, l.rating);
         }
+      } else if (cupSquad.length) {
+        // sem escalação, mas há elenco-da-copa definido: usa esse (não o global)
+        for (const r of cupSquad) {
+          add(r.playerId);
+          posOf.set(r.playerId, r.position ?? data.playerPositions[r.playerId] ?? null);
+        }
       } else {
-        // fallback (jogos antigos sem escalação): elenco ativo do time
-        for (const r of roster)
-          if (r.active) {
-            add(r.playerId);
-            posOf.set(r.playerId, r.position ?? data.playerPositions[r.playerId] ?? null);
+        // sem escalação e sem elenco-da-copa salvo: deriva de quem jogou NESTA copa
+        // (escalações + eventos). Nunca usa o elenco global (compartilhado entre copas).
+        const derived = teamId ? derivedSquadByTeam.get(teamId) : null;
+        if (derived)
+          for (const [pid, pos] of derived) {
+            add(pid);
+            posOf.set(pid, pos);
           }
       }
       // garante quem tem evento desse time (inclui quem saiu numa substituição)
@@ -759,6 +795,18 @@ export default function TournamentScreen({ data }: { data: ScreenData }) {
                 </span>
               )}
             </div>
+            {data.championPlayers.length > 0 && (
+              <p className="mb-1 text-xs text-faint">
+                <span className="font-bold text-gold">🏅 Campeões:</span>{" "}
+                {data.championPlayers.map((id) => data.playerNames[id] ?? id).join(", ")}
+              </p>
+            )}
+            {data.runnerUpPlayers.length > 0 && (
+              <p className="mb-1.5 text-xs text-faint">
+                <span className="font-bold">Vice-campeões:</span>{" "}
+                {data.runnerUpPlayers.map((id) => data.playerNames[id] ?? id).join(", ")}
+              </p>
+            )}
             <h1 className="text-3xl font-extrabold leading-none tracking-tight sm:text-5xl">
               {data.name}
             </h1>

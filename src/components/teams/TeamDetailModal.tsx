@@ -26,6 +26,7 @@ export type CupEntry = {
   status: string;
   image: string;
   championTeamId: string | null;
+  runnerUpTeamId: string | null;
   teamIds: string[];
 };
 export type TeamPlayerStat = {
@@ -40,8 +41,9 @@ export type TeamDetail = {
   id: string;
   name: string;
   logo: string;
-  titles: number;
-  runnerUps: number;
+  titles: number; // derivado: copas com champion_team_id = time
+  runnerUps: number; // derivado: copas com runner_up_team_id = time
+  championships: number; // derivado: copas disputadas (participações)
   wins: number; // computado a partir das partidas
   losses: number; // computado a partir das partidas
   draws: number; // computado a partir das partidas

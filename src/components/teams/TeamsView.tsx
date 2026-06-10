@@ -125,7 +125,10 @@ export default function TeamsView({
 
                   {/* Resumo do elenco */}
                   <div className="mt-3 flex items-center justify-between text-[11px] font-semibold uppercase tracking-wide text-faint">
-                    <span>Elenco: {activeCount}</span>
+                    <span>
+                      Elenco: {activeCount} · {t.championships}{" "}
+                      {t.championships === 1 ? "copa" : "copas"}
+                    </span>
                     <span className="text-gold opacity-0 transition-opacity group-hover:opacity-100">
                       Ver histórico →
                     </span>
