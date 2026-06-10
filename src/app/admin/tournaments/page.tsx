@@ -60,6 +60,8 @@ export default function AdminTournamentsPage() {
     {},
   );
   const [draft, setDraft] = useState<Tournament | null>(null);
+  // teamId -> rótulo do grupo ("Grupo A"...) para atribuição manual nos formatos com grupos
+  const [teamGroups, setTeamGroups] = useState<Record<string, string>>({});
   const [matches, setMatches] = useState<Match[]>([]);
   const [messages, setMessages] = useState<TournamentMessage[]>([]);
   const [awards, setAwards] = useState<Record<string, string>>({}); // award_key -> player_id
@@ -129,7 +131,7 @@ export default function AdminTournamentsPage() {
 
   const loadSub = useCallback(
     async (tid: string) => {
-      const [m, ms, aw] = await Promise.all([
+      const [m, ms, aw, tt] = await Promise.all([
         supabase
           .from("matches")
           .select(
@@ -143,7 +145,14 @@ export default function AdminTournamentsPage() {
           .eq("tournament_id", tid)
           .order("created_at", { ascending: false }),
         supabase.from("tournament_awards").select("award_key, player_id").eq("tournament_id", tid),
+        supabase.from("tournament_teams").select("team_id, group_label").eq("tournament_id", tid),
       ]);
+      const groups: Record<string, string> = {};
+      if (!tt.error && tt.data)
+        (tt.data as { team_id: string; group_label: string | null }[]).forEach((r) => {
+          if (r.group_label) groups[r.team_id] = r.group_label;
+        });
+      setTeamGroups(groups);
       setMatches(!m.error && m.data ? m.data.map(matchFromRow) : []);
       setMessages(
         !ms.error && ms.data
@@ -177,6 +186,7 @@ export default function AdminTournamentsPage() {
     setMatches([]);
     setMessages([]);
     setAwards({});
+    setTeamGroups({});
     if (t?.id) loadSub(t.id);
   }
 
@@ -270,7 +280,7 @@ export default function AdminTournamentsPage() {
           tournament_id: tid,
           team_id,
           seed: prev.get(team_id)?.seed ?? null,
-          group_label: prev.get(team_id)?.group_label ?? null,
+          group_label: (teamGroups[team_id] ?? prev.get(team_id)?.group_label) || null,
         })),
       );
     setBusy(false);
@@ -735,8 +745,47 @@ export default function AdminTournamentsPage() {
     );
     setBusy(false);
     if (error) return setErr(error.message);
+    // reflete o sorteio no editor manual de grupos (sem precisar recarregar)
+    const assigned: Record<string, string> = {};
+    if (isGroups)
+      ids.forEach((team_id, i) => {
+        assigned[team_id] = `Grupo ${String.fromCharCode(65 + (i % gc))}`;
+      });
+    setTeamGroups(assigned);
     setMsg("🎲 Sorteio realizado! Ordem e grupos definidos.");
     await loadLists();
+  }
+
+  // Salva só a atribuição manual de grupos (preserva o seed do sorteio anterior).
+  async function saveGroups() {
+    if (!draft?.id) return;
+    if (!draft.teamIds.length) return setErr("Vincule ao menos 1 time ao campeonato.");
+    setBusy(true);
+    setErr("");
+    setMsg("");
+    const tid = draft.id;
+    const { data: existing } = await supabase
+      .from("tournament_teams")
+      .select("team_id, seed, group_label")
+      .eq("tournament_id", tid);
+    const prev = new Map(
+      ((existing as { team_id: string; seed: number | null; group_label: string | null }[]) ?? []).map(
+        (x) => [x.team_id, x],
+      ),
+    );
+    await supabase.from("tournament_teams").delete().eq("tournament_id", tid);
+    const { error } = await supabase.from("tournament_teams").insert(
+      draft.teamIds.map((team_id) => ({
+        tournament_id: tid,
+        team_id,
+        seed: prev.get(team_id)?.seed ?? null,
+        group_label: (teamGroups[team_id] ?? prev.get(team_id)?.group_label) || null,
+      })),
+    );
+    setBusy(false);
+    if (error) return setErr(error.message);
+    setMsg("Grupos salvos.");
+    await loadSub(tid);
   }
 
   // pódio: define/limpa um prêmio no estado local
@@ -1625,6 +1674,72 @@ export default function AdminTournamentsPage() {
                       />
                     </label>
                   )}
+
+                  {/* atribuição MANUAL de grupos (a dedo) — sobrepõe o sorteio */}
+                  {(draft.format === "grupos_mata_mata" || draft.format === "libertadores") &&
+                    draft.teamIds.length > 0 &&
+                    (() => {
+                      const count = Math.max(
+                        2,
+                        draft.groupCount || suggestGroupCount(draft.teamIds.length),
+                      );
+                      const base = Array.from(
+                        { length: count },
+                        (_, i) => `Grupo ${String.fromCharCode(65 + i)}`,
+                      );
+                      // preserva rótulos já existentes fora do padrão (ex.: "Grupo 1")
+                      const extra = [...new Set(Object.values(teamGroups))].filter(
+                        (l) => l && !base.includes(l),
+                      );
+                      const labels = [...base, ...extra];
+                      return (
+                        <div className="flex flex-col gap-2 rounded-md bg-panel/30 p-2">
+                          <span className="text-xs font-bold">Grupos (a dedo)</span>
+                          <div className="grid gap-1 sm:grid-cols-2">
+                            {[...draft.teamIds]
+                              .sort(
+                                (a, b) =>
+                                  (teamGroups[a] ?? "").localeCompare(teamGroups[b] ?? "") ||
+                                  teamName(a).localeCompare(teamName(b)),
+                              )
+                              .map((id) => (
+                                <label
+                                  key={id}
+                                  className="flex items-center justify-between gap-2 rounded bg-card px-2 py-1 text-xs"
+                                >
+                                  <span className="truncate">{teamName(id)}</span>
+                                  <select
+                                    className="shrink-0 rounded bg-panel px-1 py-0.5 text-xs"
+                                    value={teamGroups[id] ?? ""}
+                                    onChange={(e) =>
+                                      setTeamGroups((g) => ({ ...g, [id]: e.target.value }))
+                                    }
+                                  >
+                                    <option value="">—</option>
+                                    {labels.map((lbl) => (
+                                      <option key={lbl} value={lbl}>
+                                        {lbl}
+                                      </option>
+                                    ))}
+                                  </select>
+                                </label>
+                              ))}
+                          </div>
+                          <button
+                            type="button"
+                            onClick={saveGroups}
+                            disabled={busy || !draft.id}
+                            className="self-start rounded-md bg-win px-3 py-1.5 text-xs font-bold text-white hover:opacity-90 disabled:opacity-60"
+                          >
+                            💾 Salvar grupos
+                          </button>
+                          <span className="text-[11px] text-faint">
+                            Cada time vai para o grupo escolhido (sobrepõe o sorteio). Depois clique
+                            em <b>Gerar partidas</b>.
+                          </span>
+                        </div>
+                      );
+                    })()}
 
                   {draft.id && draft.format && (
                     <div className="flex flex-wrap gap-2 pt-1">
