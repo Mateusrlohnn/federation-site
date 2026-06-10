@@ -344,18 +344,22 @@ export default function AdminTournamentsPage() {
   }
 
   // jogadores elegíveis = elenco dos 2 times selecionados (com o time de origem)
+  // Elenco de um time NESTA copa: usa o elenco-da-copa salvo (tournament_team_players);
+  // se a copa não tiver elenco definido para o time, cai no elenco global. Garante que
+  // a súmula só mostre os jogadores daquela copa (ex.: Flamengo do Brasileirão ≠ da
+  // Libertadores), e não a soma de todas as copas.
+  function teamRosterFor(teamId: string | null): { playerId: string; position: Position | null }[] {
+    if (!teamId) return [];
+    const squad = teamSquads[teamId] ?? [];
+    return squad.length ? squad : rosters[teamId] ?? [];
+  }
+
   function eligiblePlayers(): { id: string; name: string; teamId: string }[] {
     const out: { id: string; name: string; teamId: string }[] = [];
     const seen = new Set<string>();
     for (const teamId of [newMatch.homeTeamId, newMatch.awayTeamId]) {
       if (!teamId) continue;
-      // elegíveis = elenco global do time + elenco salvo desta copa (época pode ter
-      // jogadores que não estão no elenco global do time).
-      const ids = [
-        ...(rosters[teamId] ?? []).map((x) => x.playerId),
-        ...(teamSquads[teamId] ?? []).map((x) => x.playerId),
-      ];
-      for (const pid of ids) {
+      for (const { playerId: pid } of teamRosterFor(teamId)) {
         if (seen.has(pid)) continue;
         seen.add(pid);
         out.push({ id: pid, name: playerName(pid), teamId });
@@ -364,10 +368,10 @@ export default function AdminTournamentsPage() {
     return out.sort((a, b) => a.name.localeCompare(b.name));
   }
 
-  // posição padrão de um jogador num time: a do elenco, senão a natural.
+  // posição padrão de um jogador num time: a do elenco-da-copa/global, senão a natural.
   function defaultPos(teamId: string | null, pid: string): Position | null {
     if (teamId) {
-      const r = (rosters[teamId] ?? []).find((x) => x.playerId === pid);
+      const r = teamRosterFor(teamId).find((x) => x.playerId === pid);
       if (r?.position) return r.position;
     }
     return playerPos[pid] ?? null;
@@ -1119,7 +1123,7 @@ export default function AdminTournamentsPage() {
           ) : (
             <div className="grid gap-4 lg:grid-cols-2">
               {[newMatch.homeTeamId, newMatch.awayTeamId].map((tid) => {
-                const list = [...(rosters[tid ?? ""] ?? [])].sort((a, b) =>
+                const list = [...teamRosterFor(tid)].sort((a, b) =>
                   playerName(a.playerId).localeCompare(playerName(b.playerId)),
                 );
                 const count = newMatch.lineups.filter((l) => l.teamId === tid).length;
@@ -1281,7 +1285,7 @@ export default function AdminTournamentsPage() {
                         {(() => {
                           const outTeam =
                             newMatch.lineups.find((l) => l.playerId === evOut)?.teamId ?? null;
-                          return (rosters[outTeam ?? ""] ?? [])
+                          return teamRosterFor(outTeam)
                             .filter((r) => !newMatch.lineups.some((l) => l.playerId === r.playerId))
                             .sort((a, b) =>
                               playerName(a.playerId).localeCompare(playerName(b.playerId)),
@@ -2155,7 +2159,7 @@ export default function AdminTournamentsPage() {
                             setSelected: setRunnerUpPlayers,
                           },
                         ].map((col) => {
-                          const roster = col.teamId ? rosters[col.teamId] ?? [] : [];
+                          const roster = teamRosterFor(col.teamId);
                           return (
                             <div key={col.title} className="flex flex-col gap-2 rounded-md bg-panel p-2">
                               <div className="flex items-center justify-between gap-2">
