@@ -39,11 +39,19 @@ async function getData(): Promise<{
     if (t.error || !t.data) return { ...empty, teamNames, playerNames };
 
     // Em andamento primeiro, depois Em breve e por fim Finalizado. Dentro de
-    // cada grupo mantém a ordem por data (o sort do JS é estável).
+    // cada grupo, das mais recentes para as mais antigas pela data da copa
+    // (event_date; cai em created_at quando a copa não tem data cadastrada).
     const statusRank = (s: string): number =>
       s === "Em andamento" ? 0 : s === "Em breve" ? 1 : s === "Finalizado" ? 2 : 3;
+    const sortDate = (r: Record<string, unknown>): string =>
+      (r.event_date as string) ?? (r.created_at as string) ?? "";
+    const ordered = [...(t.data as Record<string, unknown>[])].sort(
+      (a, b) =>
+        statusRank(String(a.status)) - statusRank(String(b.status)) ||
+        sortDate(b).localeCompare(sortDate(a)),
+    );
 
-    const tournaments: TournamentView[] = t.data.map((r: Record<string, unknown>) => {
+    const tournaments: TournamentView[] = ordered.map((r: Record<string, unknown>) => {
       const teamIds = ((r.tournament_teams as { team_id: string }[] | undefined) ?? []).map(
         (x) => x.team_id,
       );
@@ -61,13 +69,12 @@ async function getData(): Promise<{
         logo: (r.logo_url as string) ?? "",
         championTeamId,
         championName: championTeamId ? teamNames[championTeamId] ?? null : null,
+        date: (r.event_date as string) ?? null,
         teams,
         matches: ((r.matches as Record<string, unknown>[]) ?? []).map(matchFromRow),
         messages: (r.tournament_messages as { body: string }[]) ?? [],
       };
     });
-
-    tournaments.sort((a, b) => statusRank(a.status) - statusRank(b.status));
 
     return { tournaments, teamNames, playerNames };
   } catch {

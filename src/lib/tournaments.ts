@@ -22,6 +22,7 @@ export type Tournament = {
   organizerId: string | null; // organizador (opcional)
   format: TournamentFormat | null; // formato do campeonato (opcional)
   groupCount: number | null; // nº de grupos (grupos_mata_mata)
+  eventDate: string | null; // data da copa (YYYY-MM-DD); ordena /torneios
 };
 
 export type MatchEventType =
@@ -179,6 +180,7 @@ export function emptyTournament(): Tournament {
     organizerId: null,
     format: null,
     groupCount: null,
+    eventDate: null,
   };
 }
 
@@ -218,6 +220,7 @@ export function tournamentFromRow(r: Record<string, unknown>): Tournament {
     organizerId: (r.organizer_id as string) ?? null,
     format: (r.format as TournamentFormat) ?? null,
     groupCount: r.group_count != null ? Number(r.group_count) : null,
+    eventDate: (r.event_date as string) ?? null,
   };
 }
 

@@ -19,6 +19,7 @@ export type TournamentView = {
   logo: string;
   championTeamId: string | null;
   championName: string | null;
+  date: string | null; // data da copa (YYYY-MM-DD), se cadastrada
   teams: TourTeam[];
   matches: Match[];
   messages: { body: string }[];

@@ -33,6 +33,7 @@ export default function TournamentsView({
           {tournaments.map((t) => {
             const topScorer = computeTopScorers(t.matches)[0];
             const hasLive = t.matches.some((m) => m.isLive);
+            const dateLabel = t.date ? t.date.slice(0, 10).split("-").reverse().join("/") : null;
             return (
               <Link
                 key={t.id}
@@ -96,6 +97,11 @@ export default function TournamentsView({
                     <Icon name="note-sticky" className="text-draw" />
                     {t.matches.length} jogos
                   </span>
+                  {dateLabel && (
+                    <span className="flex items-center gap-1 text-faint" title="Data da copa">
+                      📅 {dateLabel}
+                    </span>
+                  )}
                   {topScorer && (
                     <span className="ml-auto flex items-center gap-1 truncate font-semibold text-gold">
                       <Icon name="futbol" />

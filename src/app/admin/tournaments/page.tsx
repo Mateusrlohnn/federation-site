@@ -289,6 +289,7 @@ export default function AdminTournamentsPage() {
       organizer_id: draft.organizerId || null,
       format: draft.format || null,
       group_count: draft.groupCount || null,
+      event_date: draft.eventDate || null,
     };
     if (tid) {
       const { error } = await supabase.from("tournaments").update(row).eq("id", tid);
@@ -375,10 +376,23 @@ export default function AdminTournamentsPage() {
   const lineupOf = (pid: string) => newMatch.lineups.find((l) => l.playerId === pid);
 
   // marca/desmarca um jogador como escalado (titular) num time.
+  // Um jogador só joga por UM time na partida (unique match_id+player_id):
+  //  - clicar no time em que já está escalado -> remove;
+  //  - clicar no outro time -> transfere (não duplica nem some). Resolve o caso
+  //    de jogadores que estão no elenco dos dois times.
   function toggleLineup(pid: string, teamId: string | null) {
     setNewMatch((m) => {
-      const exists = m.lineups.some((l) => l.playerId === pid);
-      if (exists) return { ...m, lineups: m.lineups.filter((l) => l.playerId !== pid) };
+      const cur = m.lineups.find((l) => l.playerId === pid);
+      if (cur) {
+        if (cur.teamId === teamId)
+          return { ...m, lineups: m.lineups.filter((l) => l.playerId !== pid) };
+        return {
+          ...m,
+          lineups: m.lineups.map((l) =>
+            l.playerId === pid ? { ...l, teamId, position: defaultPos(teamId, pid) } : l,
+          ),
+        };
+      }
       const entry: MatchLineup = {
         playerId: pid,
         teamId,
@@ -439,7 +453,11 @@ export default function AdminTournamentsPage() {
       return;
     }
     if (!evPlayer) return;
-    const teamId = eligiblePlayers().find((p) => p.id === evPlayer)?.teamId ?? null;
+    // se o jogador está escalado, usa o time da escalação (fonte da verdade);
+    // senão, cai no elenco elegível. Evita atribuir ao time errado quando o
+    // jogador pertence ao elenco dos dois times.
+    const teamId =
+      lineupOf(evPlayer)?.teamId ?? eligiblePlayers().find((p) => p.id === evPlayer)?.teamId ?? null;
     const minute = evMinute.trim() === "" ? null : Number(evMinute) || 0;
     setNewMatch((m) => ({
       ...m,
@@ -456,7 +474,8 @@ export default function AdminTournamentsPage() {
   // disputa de pênaltis: adiciona uma cobrança (convertida ou perdida).
   function addShootout(scored: boolean) {
     if (!penPlayer) return;
-    const teamId = eligiblePlayers().find((p) => p.id === penPlayer)?.teamId ?? null;
+    const teamId =
+      lineupOf(penPlayer)?.teamId ?? eligiblePlayers().find((p) => p.id === penPlayer)?.teamId ?? null;
     setNewMatch((m) => ({
       ...m,
       events: [
@@ -1122,7 +1141,8 @@ export default function AdminTournamentsPage() {
                     <div className="grid grid-cols-3 gap-1.5 sm:grid-cols-4">
                       {list.map((r) => {
                         const entry = lineupOf(r.playerId);
-                        const selected = !!entry;
+                        // só fica "marcado" no time em que está escalado (não nos dois)
+                        const selected = !!entry && entry.teamId === tid;
                         return (
                           <div
                             key={r.playerId}
@@ -1647,7 +1667,7 @@ export default function AdminTournamentsPage() {
                   </div>
                 </div>
 
-                <div className="grid gap-3 sm:grid-cols-[1fr_180px]">
+                <div className="grid gap-3 sm:grid-cols-[1fr_150px_160px]">
                   <label className="flex flex-col gap-1 text-xs">
                     Nome do torneio
                     <input
@@ -1671,6 +1691,15 @@ export default function AdminTournamentsPage() {
                         </option>
                       ))}
                     </select>
+                  </label>
+                  <label className="flex flex-col gap-1 text-xs">
+                    Data da copa
+                    <input
+                      type="date"
+                      className={inputC}
+                      value={draft.eventDate ?? ""}
+                      onChange={(e) => setDraft({ ...draft, eventDate: e.target.value || null })}
+                    />
                   </label>
                 </div>
 
