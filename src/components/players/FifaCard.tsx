@@ -47,7 +47,7 @@ const VARIANT_TYPE: Record<CardVariant, string> = {
 /** Selo de "sem clube" (free agent) — círculo de proibição. Herda currentColor. */
 function FreeAgentBadge() {
   return (
-    <span title="Sem clube (passe livre)" className="mt-1.5 flex flex-col items-center" aria-label="Sem clube">
+    <span title="Sem clube (passe livre)" className="fut-card__freeagent mt-1.5 flex flex-col items-center" aria-label="Sem clube">
       <svg
         width="26"
         height="26"
@@ -123,6 +123,8 @@ export default function FifaCard({
   teamLogo,
   teamName,
   position,
+  size,
+  showLabel = true,
 }: {
   player: HofPlayer;
   overall: number | null;
@@ -131,6 +133,8 @@ export default function FifaCard({
   teamLogo?: string;
   teamName?: string;
   position?: Position | null; // posição do card; cai na natural do jogador se ausente
+  size?: number; // largura do card em px; sem isso, ocupa 100% (até 200px). Tudo escala junto.
+  showLabel?: boolean; // mostra o rótulo "Auge/Atual" em cima (default true)
 }) {
   const variant = cardVariant(overall, isAuge, player.aposentado);
   const cardPos = position ?? player.position;
@@ -145,11 +149,20 @@ export default function FifaCard({
     : "";
 
   const card = (
-    <div className={`fut-card ${variant}`}>
+    <div
+      className={`fut-card ${variant}`}
+      style={size != null ? { width: size, maxWidth: size } : undefined}
+    >
       <div className="fut-card__inner" />
 
-      {/* OVR 98–99: chama em looping atrás do avatar (fundo transparente) */}
-      {variant === "card-fire-elite" && <FireLayer uid={isAuge ? "auge" : "atual"} />}
+      {/* OVR 98–99: chama em looping atrás do avatar (fundo transparente).
+          uid único por jogador+aba evita colisão de ids SVG quando há vários
+          cards de fogo na mesma tela (ex.: escalação do draft). */}
+      {variant === "card-fire-elite" && (
+        <FireLayer
+          uid={`${isAuge ? "auge" : "atual"}-${(player.nick || player.name).replace(/[^a-zA-Z0-9]/g, "")}`}
+        />
+      )}
 
       {/* Overall + posição + brasão do clube (canto superior esquerdo) */}
       <div className="fut-card__corner">
@@ -184,9 +197,11 @@ export default function FifaCard({
 
   return (
     <div className="flex flex-col items-center">
-      <span className="mb-2 text-[11px] font-bold uppercase tracking-[0.2em] text-faint">
-        {label}
-      </span>
+      {showLabel && (
+        <span className="mb-2 text-[11px] font-bold uppercase tracking-[0.2em] text-faint">
+          {label}
+        </span>
+      )}
 
       {/* Todas as variantes são autossuficientes (efeitos via CSS/SVG internos). */}
       {card}
