@@ -700,6 +700,103 @@ export function buildSwissBracket(teamIds: string[], matches: MatchLike[]): Swis
 }
 
 /**
+ * Separa, no SISTEMA SUÍÇO, os jogos da FASE SUÍÇA dos da FASE FINAL
+ * (semifinais/final). Um jogo é da fase final quando, no momento em que foi
+ * disputado, pelo menos um dos times JÁ estava classificado (atingiu o nº de
+ * vitórias) ou eliminado — times fora da disputa não recebem mais emparelhamento
+ * suíço. Reconstrói os recordes em ordem cronológica (só com jogos do suíço).
+ *
+ * Assim os recordes/potes do suíço NÃO são poluídos pela fase final, e o
+ * chaveamento final NÃO reaproveita um jogo do suíço entre o mesmo par (ex.: uma
+ * semifinal lendo o placar de um jogo da fase suíça).
+ */
+export function splitSwissFinalMatches(
+  teamIds: string[],
+  matches: MatchLike[],
+  qualifyWins: number,
+  eliminateLosses: number,
+): { swiss: MatchLike[]; final: MatchLike[] } {
+  const set = new Set(teamIds);
+  const rec = new Map<string, { w: number; l: number }>();
+  teamIds.forEach((id) => rec.set(id, { w: 0, l: 0 }));
+  const swiss: MatchLike[] = [];
+  const final: MatchLike[] = [];
+  const active = (r: { w: number; l: number }) => r.w < qualifyWins && r.l < eliminateLosses;
+  for (const m of finalsByDate(matches)) {
+    const h = m.homeTeamId as string;
+    const a = m.awayTeamId as string;
+    const rh = rec.get(h);
+    const ra = rec.get(a);
+    if (!set.has(h) || !set.has(a) || !rh || !ra) {
+      final.push(m);
+      continue;
+    }
+    if (active(rh) && active(ra)) {
+      swiss.push(m);
+      if (m.homeScore > m.awayScore) {
+        rh.w++;
+        ra.l++;
+      } else if (m.awayScore > m.homeScore) {
+        ra.w++;
+        rh.l++;
+      }
+    } else {
+      final.push(m); // ≥1 time já classificado/eliminado → fase final
+    }
+  }
+  return { swiss, final };
+}
+
+/**
+ * Chave da FASE FINAL do suíço (Semifinais + Final). Cruza os INVICTOS (sem
+ * derrotas) com os RECUPERADOS (com derrota), EVITANDO revanches do suíço: cada
+ * invicto pega um recuperado que ainda não enfrentou. Vagas indefinidas = null.
+ * Os placares vêm SÓ dos jogos da fase final — nunca de um jogo do suíço.
+ */
+export function buildSwissFinal(
+  invictos: string[],
+  recuperados: string[],
+  finalMatches: MatchLike[],
+  swissPlayed: Set<string>,
+): BracketRound[] {
+  const slots = Math.max(invictos.length, recuperados.length, 1);
+  const rec: (string | null)[] = [...recuperados];
+  const semiPairs: { home: string | null; away: string | null }[] = [];
+  for (let i = 0; i < slots; i++) {
+    const home = invictos[i] ?? null;
+    // recuperado ainda não enfrentado por este invicto (senão, o 1º livre)
+    let idx = home ? rec.findIndex((r) => r != null && !swissPlayed.has(pairKey(home, r))) : -1;
+    if (idx === -1) idx = rec.findIndex((r) => r != null);
+    const away = idx >= 0 ? rec.splice(idx, 1)[0] ?? null : null;
+    semiPairs.push({ home, away });
+  }
+  const mk = (home: string | null, away: string | null): BracketMatch => {
+    let homeScore: number | null = null;
+    let awayScore: number | null = null;
+    let homePens: number | null = null;
+    let awayPens: number | null = null;
+    let winner: string | null = null;
+    if (home && away) {
+      const m = findMatch(finalMatches, home, away);
+      if (m) {
+        homeScore = m.homeTeamId === home ? m.homeScore : m.awayScore;
+        awayScore = m.homeTeamId === home ? m.awayScore : m.homeScore;
+        homePens = m.homeTeamId === home ? m.homePens ?? null : m.awayPens ?? null;
+        awayPens = m.homeTeamId === home ? m.awayPens ?? null : m.homePens ?? null;
+        winner = knockoutWinner(finalMatches, home, away);
+      }
+    }
+    return { home, away, homeScore, awayScore, homePens, awayPens, winner };
+  };
+  const semis = semiPairs.map((s) => mk(s.home, s.away));
+  const final = mk(semis[0]?.winner ?? null, semis[1]?.winner ?? null);
+  return [
+    { label: "Semifinais", matches: semis },
+    { label: "Final", matches: [final] },
+  ];
+}
+
+/**
  * Confrontos do suíço agrupados pelo recorde de entrada dos times:
  * inclui partidas finalizadas (recorde reconstruído) e as agendadas/sorteadas
  * (recorde atual). Usado para exibir os jogos dentro de cada pote.

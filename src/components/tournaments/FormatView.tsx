@@ -8,13 +8,15 @@ import {
   buildKnockout,
   buildLibertadoresKnockout,
   splitGroupKnockoutMatches,
-  nextPowerOfTwo,
   roundRobinFixtures,
   type FixtureRound,
   computeSwissRecords,
   swissTemplate,
   swissMatchesByRecord,
   swissThresholds,
+  splitSwissFinalMatches,
+  buildSwissFinal,
+  playedPairs,
   BYE,
   type TournamentFormat,
   type StandingRow,
@@ -778,10 +780,18 @@ export default function FormatView({
   }
 
   // ---- SISTEMA SUÍÇO (template de possibilidades + setas — estilo modelo suíço) ----
-  const records = computeSwissRecords(teamIds, matches);
   const { qualifyWins, eliminateLosses, rounds } = swissThresholds(teamIds.length);
+  // separa os jogos da fase suíça dos da fase final (semis/final): a fase final
+  // não polui os recordes nem é lida como jogo do suíço (e vice-versa).
+  const { swiss: swissMatches, final: finalPhaseMatches } = splitSwissFinalMatches(
+    teamIds,
+    matches,
+    qualifyWins,
+    eliminateLosses,
+  );
+  const records = computeSwissRecords(teamIds, swissMatches);
   const template = swissTemplate(teamIds.length);
-  const matchesByRecord = swissMatchesByRecord(teamIds, matches);
+  const matchesByRecord = swissMatchesByRecord(teamIds, swissMatches);
 
   // times atualmente em cada recorde "V-D"
   const teamsByRecord = new Map<string, TeamLite[]>();
@@ -791,7 +801,6 @@ export default function FormatView({
     const t = byId.get(r.teamId);
     if (t) teamsByRecord.get(k)!.push(t);
   }
-  const classifiedIds = records.filter((r) => r.status === "Classificado").map((r) => r.teamId);
   const eliminatedIds = records.filter((r) => r.status === "Eliminado").map((r) => r.teamId);
 
   // colunas: apenas nós "ativos" por rodada (os desfechos vão nas caixas à direita)
@@ -799,15 +808,18 @@ export default function FormatView({
     .map((col) => col.filter((n) => n.kind === "active"))
     .filter((col) => col.length > 0);
 
-  // fase final: os classificados (2-0 e 2-1) vão para Semifinais → Final.
-  // mostra a chave SEMPRE (pré-visualizada), com "A definir" nas vagas ainda
-  // não preenchidas; vai completando conforme os times classificam.
-  const classifiedCapacity = template.byRound
-    .flat()
-    .filter((n) => n.kind === "classified")
-    .reduce((s, n) => s + n.teams, 0);
-  const finalSize = Math.max(2, nextPowerOfTwo(classifiedCapacity || 2));
-  const finalBracket = buildKnockout(classifiedIds, matches, { size: finalSize, fillEmpty: "tbd" });
+  // FASE FINAL: invictos (sem derrota) x recuperados (com derrota), cruzando e
+  // EVITANDO revanche do suíço. Placares só dos jogos da fase final — nunca
+  // reaproveita um jogo da fase suíça entre o mesmo par. Vagas vazias = A definir.
+  const classified = records.filter((r) => r.status === "Classificado");
+  const invictos = classified.filter((r) => r.losses === 0).map((r) => r.teamId);
+  const recuperados = classified.filter((r) => r.losses > 0).map((r) => r.teamId);
+  const finalBracket = buildSwissFinal(
+    invictos,
+    recuperados,
+    finalPhaseMatches,
+    playedPairs(swissMatches),
+  );
 
   return (
     <div className="flex flex-col gap-5">
