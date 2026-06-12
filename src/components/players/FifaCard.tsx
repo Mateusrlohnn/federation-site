@@ -40,7 +40,7 @@ const VARIANT_TYPE: Record<CardVariant, string> = {
   "card-gold": "Ouro",
   "card-blue": "TOTY",
   "card-pink-refined": "Birthday",
-  "card-fire-elite": "Inferno",
+  "card-fire-elite": "GODLIKE",
   "card-icon": "Icon",
 };
 
