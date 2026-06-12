@@ -13,6 +13,7 @@ const tabs = [
   { href: "/admin/tournaments", label: "Torneios" },
   { href: "/admin/rules", label: "Regras" },
   { href: "/admin/feed", label: "Feed" },
+  { href: "/admin/draft", label: "Draft" },
 ];
 
 export default function AdminLayout({ children }: { children: React.ReactNode }) {
