@@ -331,21 +331,8 @@ export function resolveWindCup(
   return resolveCore(ordered, (stage) => results[stage]);
 }
 
-/**
- * Confronto do BRACKET entre dois times = a ÚLTIMA partida entre eles (a
- * revanche pós-liga). Exige ≥2 jogos do par (1º = liga, 2º = bracket); se só
- * existe o jogo da liga, o confronto eliminatório ainda não foi disputado.
- * Retorna o placar orientado para (home, away), incluindo a disputa de pênaltis
- * (eventos shootout_goal) para decidir empates do tempo normal.
- */
-function bracketMeeting(matches: MatchLike[], home: string, away: string): WindResult | undefined {
-  const between = finalsByDate(matches).filter((m) => {
-    const h = m.homeTeamId as string;
-    const a = m.awayTeamId as string;
-    return (h === home && a === away) || (h === away && a === home);
-  });
-  if (between.length < 2) return undefined; // só o jogo da liga (ou nenhum)
-  const m = between[between.length - 1]; // o mais recente = bracket
+/** Orienta o placar de uma partida para o par (home, away) pedido. */
+function orientResult(m: MatchLike, home: string): WindResult {
   return m.homeTeamId === home
     ? { homeScore: m.homeScore, awayScore: m.awayScore, homePens: m.homePens ?? null, awayPens: m.awayPens ?? null }
     : { homeScore: m.awayScore, awayScore: m.homeScore, homePens: m.awayPens ?? null, awayPens: m.homePens ?? null };
@@ -353,15 +340,49 @@ function bracketMeeting(matches: MatchLike[], home: string, away: string): WindR
 
 /**
  * Resolve a Wind Cup a partir das PARTIDAS reais do torneio (fase de pontos +
- * revanches do bracket). A classificação vem da liga; cada confronto do bracket
- * é casado pela revanche entre os participantes. Avança automaticamente conforme
- * os resultados são lançados.
+ * jogos do bracket). A classificação vem da liga; cada confronto do bracket é
+ * casado com um jogo real.
+ *
+ * Regra de casamento (em ordem cronológica):
+ *   - o 1º encontro de cada par é da LIGA (fase de pontos) e NUNCA conta como
+ *     jogo do bracket;
+ *   - os demais encontros (revanches) são os jogos do mata-mata, CONSUMIDOS um
+ *     por confronto, na ordem das fases (upper1 → lower1 → lower2 → semi →
+ *     final).
+ *
+ * Assim, um mesmo par pode se enfrentar mais de uma vez no bracket (ex.: o
+ * perdedor de uma fase que retorna e reencontra o mesmo adversário) sem
+ * reaproveitar o jogo da liga nem o de outra fase — cada jogo conta uma vez só.
  */
 export function buildWindCupFromMatches(
   ordered: string[] | StandingRow[],
   matches: MatchLike[],
 ): WindCupResult {
-  return resolveCore(ordered, (_stage, home, away) =>
-    home && away ? bracketMeeting(matches, home, away) : undefined,
-  );
+  const chrono = finalsByDate(matches);
+  // jogos da liga = 1º encontro (cronológico) de cada par → fora do bracket
+  const leagueSet = new Set<MatchLike>();
+  const seenPair = new Set<string>();
+  for (const m of chrono) {
+    const k = pairKey(m.homeTeamId as string, m.awayTeamId as string);
+    if (!seenPair.has(k)) {
+      seenPair.add(k);
+      leagueSet.add(m);
+    }
+  }
+  const bracketPool = chrono.filter((m) => !leagueSet.has(m));
+  const consumed = new Set<MatchLike>();
+
+  return resolveCore(ordered, (_stage, home, away) => {
+    if (!home || !away) return undefined;
+    // próximo jogo do bracket (ainda não usado) entre estes dois times
+    const m = bracketPool.find(
+      (x) =>
+        !consumed.has(x) &&
+        ((x.homeTeamId === home && x.awayTeamId === away) ||
+          (x.homeTeamId === away && x.awayTeamId === home)),
+    );
+    if (!m) return undefined;
+    consumed.add(m);
+    return orientResult(m, home);
+  });
 }
