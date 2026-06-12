@@ -9,6 +9,7 @@ const links: { href: string; icon: keyof typeof ICONS; label: string }[] = [
   { href: "/tournaments", icon: "trophy", label: "Tournaments" },
   { href: "/teams", icon: "shield", label: "Teams" },
   { href: "/players", icon: "user", label: "Players" },
+  { href: "/draft", icon: "futbol", label: "Draft" },
   { href: "/feed", icon: "note-sticky", label: "Feed" },
   { href: "/rules", icon: "book-open", label: "Rules" },
 ];
