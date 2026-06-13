@@ -16,6 +16,7 @@ const geistMono = Geist_Mono({
 });
 
 export const metadata: Metadata = {
+  metadataBase: new URL("https://rebug-site.vercel.app"),
   title: "Federação Rebug",
   description: "Federação de futebol do Hubbe — organizada por Levi, LebronGames e Pkzera",
   openGraph: {
