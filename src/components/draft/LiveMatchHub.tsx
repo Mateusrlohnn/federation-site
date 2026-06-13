@@ -330,7 +330,7 @@ export function LiveMatchHub({ teamA, teamB, onFinished }: LiveMatchHubProps) {
                                         <div className="grid grid-cols-1 gap-1.5 opacity-75">
                                             {reservesA.map(p => (
                                                 <div key={p.id} className="text-xs font-medium text-white/80 bg-white/[0.02] px-3 py-2 rounded-lg border border-white/5 flex items-center justify-between gap-2">
-                                                    <span className="truncate">👤 {p.name || p.playerName || p.hofData?.name || "Jogador"} ({p.overall})</span>
+                                                    <span className="truncate">👤 {p.name || "Jogador"} ({p.overall})</span>
                                                     <span className="text-[9px] font-black bg-white/5 text-faint px-1.5 py-0.5 rounded border border-white/5 uppercase shrink-0">
                                                         {p.position || "SUB"}
                                                     </span>
@@ -444,7 +444,7 @@ export function LiveMatchHub({ teamA, teamB, onFinished }: LiveMatchHubProps) {
                                         <div className="grid grid-cols-1 gap-1.5 opacity-75">
                                             {reservesB.map(p => (
                                                 <div key={p.id} className="text-xs font-medium text-white/80 bg-white/[0.02] px-3 py-2 rounded-lg border border-white/5 flex items-center justify-between gap-2">
-                                                    <span className="truncate">👤 {p.name || p.playerName || p.hofData?.name || "Jogador"}</span>
+                                                    <span className="truncate">👤 {p.name || "Jogador"}</span>
                                                     <span className="text-[9px] font-black bg-white/5 text-faint px-1.5 py-0.5 rounded border border-white/5 uppercase shrink-0">
                                                         {p.position || "SUB"}
                                                     </span>
