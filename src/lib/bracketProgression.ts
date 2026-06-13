@@ -89,9 +89,13 @@ function updateCampaignStats(tournament: TournamentState, match: MatchNode) {
 
     // Atualiza estatísticas individuais de TODOS os jogadores envolvidos
     match.events.forEach(event => {
-        const ensurePlayer = (id: string, name: string) => {
-            if (!stats.playerStats[id]) {
-                stats.playerStats[id] = {
+        // CORREÇÃO: Cria uma chave composta combinando o Time + Jogador
+        const statsKey = `${event.teamId}_${event.playerId}`;
+
+        const ensurePlayer = (id: string, name: string, teamId: string) => {
+            const key = `${teamId}_${id}`;
+            if (!stats.playerStats[key]) {
+                stats.playerStats[key] = {
                     playerId: id,
                     playerName: name,
                     goals: 0,
@@ -105,21 +109,23 @@ function updateCampaignStats(tournament: TournamentState, match: MatchNode) {
         };
 
         if (event.type === "GOAL") {
-            ensurePlayer(event.playerId, event.playerName);
-            stats.playerStats[event.playerId].goals++;
+            ensurePlayer(event.playerId, event.playerName, event.teamId);
+            stats.playerStats[statsKey].goals++;
+
             if (event.assistPlayerId && event.assistPlayerName) {
-                ensurePlayer(event.assistPlayerId, event.assistPlayerName);
-                stats.playerStats[event.assistPlayerId].assists++;
+                const assistKey = `${event.teamId}_${event.assistPlayerId}`;
+                ensurePlayer(event.assistPlayerId, event.assistPlayerName, event.teamId);
+                stats.playerStats[assistKey].assists++;
             }
         } else if (event.type === "OWN_GOAL") {
-            ensurePlayer(event.playerId, event.playerName);
-            stats.playerStats[event.playerId].ownGoals++;
+            ensurePlayer(event.playerId, event.playerName, event.teamId);
+            stats.playerStats[statsKey].ownGoals++;
         } else if (event.type === "YELLOW_CARD") {
-            ensurePlayer(event.playerId, event.playerName);
-            stats.playerStats[event.playerId].yellowCards++;
+            ensurePlayer(event.playerId, event.playerName, event.teamId);
+            stats.playerStats[statsKey].yellowCards++;
         } else if (event.type === "RED_CARD" || event.type === "SECOND_YELLOW") {
-            ensurePlayer(event.playerId, event.playerName);
-            stats.playerStats[event.playerId].redCards++;
+            ensurePlayer(event.playerId, event.playerName, event.teamId);
+            stats.playerStats[statsKey].redCards++;
         }
     });
 }
