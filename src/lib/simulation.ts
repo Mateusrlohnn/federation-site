@@ -18,6 +18,47 @@ export interface SimulationState {
     playerYellowCards: Record<string, number>;
     // Rastreia jogadores expulsos (não podem mais participar de nenhum evento)
     expelledPlayerIds: Set<string>;
+    // Titulares definidos no início da partida para não mudarem no meio do jogo
+    homeStarters: TournamentPlayer[];
+    awayStarters: TournamentPlayer[];
+}
+
+/** Função utilitária para embaralhar arrays (Fisher-Yates) */
+function shuffleArray<T>(array: T[]): T[] {
+    const arr = [...array];
+    for (let i = arr.length - 1; i > 0; i--) {
+        const j = Math.floor(Math.random() * (i + 1));
+        [arr[i], arr[j]] = [arr[j], arr[i]];
+    }
+    return arr;
+}
+
+/** Sorteia os 4 titulares que vão iniciar a partida: 1 GK, 1 ZAG, 1 MID e 1 ATK */
+export function selectRandomStarters(team: TournamentTeam): TournamentPlayer[] {
+    const starters: TournamentPlayer[] = [];
+
+    // Filtra e embaralha os jogadores por cada posição específica
+    const gks = shuffleArray(team.players.filter(p => p.position === "GK"));
+    const zags = shuffleArray(team.players.filter(p => p.position === "ZAG"));
+    const mids = shuffleArray(team.players.filter(p => p.position === "MID"));
+    const atks = shuffleArray(team.players.filter(p => p.position === "ATK"));
+
+    // Pega exatamente 1 jogador de cada posição (se houver)
+    if (gks.length > 0) starters.push(gks[0]);
+    if (zags.length > 0) starters.push(zags[0]);
+    if (mids.length > 0) starters.push(mids[0]);
+    if (atks.length > 0) starters.push(atks[0]);
+
+    // Fallback de segurança: se o time não tiver alguma das posições cadastradas,
+    // completa com os jogadores que sobraram para garantir 4 em campo.
+    if (starters.length < 4) {
+        const starterIds = new Set(starters.map(p => p.id));
+        const remainingPlayers = shuffleArray(team.players.filter(p => !starterIds.has(p.id)));
+        const needed = 4 - starters.length;
+        starters.push(...remainingPlayers.slice(0, needed));
+    }
+
+    return starters.slice(0, 4);
 }
 
 export function createInitialSimulationState(homeTeam: TournamentTeam, awayTeam: TournamentTeam): SimulationState {
@@ -33,23 +74,10 @@ export function createInitialSimulationState(homeTeam: TournamentTeam, awayTeam:
         awayRedCards: 0,
         playerYellowCards: {},
         expelledPlayerIds: new Set(),
+        // Define os titulares uma única vez por partida
+        homeStarters: selectRandomStarters(homeTeam),
+        awayStarters: selectRandomStarters(awayTeam),
     };
-}
-
-/** Retorna jogadores de campo elegíveis (não GK, não expulsos). */
-function getFieldPlayers(
-    team: TournamentTeam,
-    expelledIds: Set<string>
-): TournamentPlayer[] {
-    return team.players.filter(p => p.position !== "GK" && !expelledIds.has(p.id));
-}
-
-/** Retorna jogadores elegíveis para levar cartão (qualquer posição, não expulsos). */
-function getCardablePlayers(
-    team: TournamentTeam,
-    expelledIds: Set<string>
-): TournamentPlayer[] {
-    return team.players.filter(p => !expelledIds.has(p.id));
 }
 
 function pickRandom<T>(arr: T[]): T | undefined {
@@ -65,15 +93,16 @@ export function tickSimulation(
     if (state.isFinished) return state;
 
     const nextMinute = state.minute + 1;
-    // Copia rasa do state; Set precisa ser recriado para ser imutável corretamente
+
     const newState: SimulationState = {
         ...state,
         minute: nextMinute,
         events: [...state.events],
         playerYellowCards: { ...state.playerYellowCards },
-        // Mantém a mesma referência de Set enquanto não houver expulsão — se
-        // houver expulsão, criamos um novo Set no bloco de cartão abaixo.
         expelledPlayerIds: state.expelledPlayerIds,
+        // Mantém a referência dos titulares
+        homeStarters: state.homeStarters,
+        awayStarters: state.awayStarters,
     };
 
     // ── Fim de jogo (minuto 90) ──────────────────────────────────────────────
@@ -83,9 +112,10 @@ export function tickSimulation(
         if (newState.scoreHome === newState.scoreAway) {
             const winnerIsHome = Math.random() < newState.homePower / (newState.homePower + newState.awayPower);
             const team = winnerIsHome ? homeTeam : awayTeam;
+            const teamStarters = winnerIsHome ? newState.homeStarters : newState.awayStarters;
 
-            // BUG FIX: pênalti só pode ser cobrado por jogador de campo não expulso
-            const eligible = getFieldPlayers(team, newState.expelledPlayerIds);
+            // Gol de Ouro: jogador de campo não expulso entre os titulares
+            const eligible = teamStarters.filter(p => p.position !== "GK" && !newState.expelledPlayerIds.has(p.id));
             const scorer = pickRandom(eligible) ?? pickRandom(team.players.filter(p => !newState.expelledPlayerIds.has(p.id)));
 
             if (scorer) {
@@ -107,7 +137,10 @@ export function tickSimulation(
     if (Math.random() < 0.06) {
         const totalPower = newState.homePower + newState.awayPower;
         const isHomeEvent = Math.random() < newState.homePower / totalPower;
+
         const actingTeam = isHomeEvent ? homeTeam : awayTeam;
+        const actingStarters = isHomeEvent ? newState.homeStarters : newState.awayStarters;
+
         const rand = Math.random();
 
         // ── GOL (45% dos eventos) ────────────────────────────────────────────
@@ -115,10 +148,9 @@ export function tickSimulation(
             const isOwnGoal = Math.random() < 0.05;
 
             if (isOwnGoal) {
-                // Gol contra: pode ser de qualquer jogador não expulso (inclusive GK)
-                const eligible = getCardablePlayers(actingTeam, newState.expelledPlayerIds);
+                const eligible = actingStarters.filter(p => !newState.expelledPlayerIds.has(p.id));
                 const scorer = pickRandom(eligible);
-                if (!scorer) return newState; // sem jogadores disponíveis, ignora evento
+                if (!scorer) return newState;
 
                 if (isHomeEvent) newState.scoreAway++; else newState.scoreHome++;
                 newState.events.push({
@@ -130,14 +162,12 @@ export function tickSimulation(
                 });
 
             } else {
-                // BUG FIX: gol normal — scorer deve ser jogador de CAMPO, não expulso
-                const eligibleScorers = getFieldPlayers(actingTeam, newState.expelledPlayerIds);
+                const eligibleScorers = actingStarters.filter(p => p.position !== "GK" && !newState.expelledPlayerIds.has(p.id));
                 const scorer = pickRandom(eligibleScorers);
-                if (!scorer) return newState; // time sem jogadores de campo disponíveis
+                if (!scorer) return newState;
 
                 if (isHomeEvent) newState.scoreHome++; else newState.scoreAway++;
 
-                // BUG FIX: assistência — jogador de campo, não expulso, diferente do scorer
                 const possibleAssisters = eligibleScorers.filter(p => p.id !== scorer.id);
                 const assist = Math.random() < 0.7 ? pickRandom(possibleAssisters) : undefined;
 
@@ -152,18 +182,16 @@ export function tickSimulation(
                 });
             }
 
-            // ── CARTÃO ───────────────────────────────────────────────────────────
-        } else {
-            // BUG FIX: cartão só para jogadores ainda em campo (não expulsos)
-            const cardable = getCardablePlayers(actingTeam, newState.expelledPlayerIds);
+            // ── CARTÃO (Reduzido para 20% dos eventos) ───────────────────────────
+        } else if (rand < 0.65) {
+            const cardable = actingStarters.filter(p => !newState.expelledPlayerIds.has(p.id));
             const targetPlayer = pickRandom(cardable);
             if (!targetPlayer) return newState;
 
             const currentYellows = newState.playerYellowCards[targetPlayer.id] || 0;
-            const isDirectRed = Math.random() >= 0.85;
+            const isDirectRed = Math.random() >= 0.95;
 
             if (!isDirectRed && currentYellows === 0) {
-                // Primeiro amarelo
                 newState.playerYellowCards[targetPlayer.id] = 1;
                 newState.events.push({
                     minute: nextMinute,
@@ -174,24 +202,26 @@ export function tickSimulation(
                 });
 
             } else if (!isDirectRed && currentYellows >= 1) {
-                // Segundo amarelo → expulsão
-                newState.playerYellowCards[targetPlayer.id] = 2;
-                newState.expelledPlayerIds = new Set(newState.expelledPlayerIds).add(targetPlayer.id);
-                if (isHomeEvent) { newState.homeRedCards++; newState.homePower *= 0.85; }
-                else { newState.awayRedCards++; newState.awayPower *= 0.85; }
-                newState.events.push({
-                    minute: nextMinute,
-                    type: "SECOND_YELLOW",
-                    teamId: actingTeam.id,
-                    playerId: targetPlayer.id,
-                    playerName: targetPlayer.name,
-                });
+                if (Math.random() < 0.30) {
+                    newState.playerYellowCards[targetPlayer.id] = 2;
+                    newState.expelledPlayerIds = new Set(newState.expelledPlayerIds).add(targetPlayer.id);
+                    if (isHomeEvent) { newState.homeRedCards++; newState.homePower *= 0.85; }
+                    else { newState.awayRedCards++; newState.awayPower *= 0.85; }
+
+                    newState.events.push({
+                        minute: nextMinute,
+                        type: "SECOND_YELLOW",
+                        teamId: actingTeam.id,
+                        playerId: targetPlayer.id,
+                        playerName: targetPlayer.name,
+                    });
+                }
 
             } else {
-                // Vermelho direto → expulsão
                 newState.expelledPlayerIds = new Set(newState.expelledPlayerIds).add(targetPlayer.id);
                 if (isHomeEvent) { newState.homeRedCards++; newState.homePower *= 0.85; }
                 else { newState.awayRedCards++; newState.awayPower *= 0.85; }
+
                 newState.events.push({
                     minute: nextMinute,
                     type: "RED_CARD",
@@ -201,6 +231,7 @@ export function tickSimulation(
                 });
             }
         }
+        // Se o rand for >= 0.65, nenhum evento relevante acontece (ex: chute pra fora)
     }
 
     return newState;

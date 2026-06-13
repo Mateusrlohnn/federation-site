@@ -15,20 +15,24 @@ interface EndScreenProps {
 
 export function EndScreen({ isChampion, userTeam, campaignStats, onResetDraft }: EndScreenProps) {
     // REGRA #4: Leaderboards (Top 5)
+    // Usamos Object.entries para manter a statsKey original do objeto
     const topScorers = useMemo(() => {
-        return Object.values(campaignStats?.playerStats || {})
+        return Object.entries(campaignStats?.playerStats || {})
+            .map(([statsKey, stats]) => ({ ...stats, statsKey }))
             .sort((a, b) => b.goals - a.goals || b.assists - a.assists)
             .slice(0, 5);
     }, [campaignStats]);
 
     const topAssisters = useMemo(() => {
-        return Object.values(campaignStats?.playerStats || {})
+        return Object.entries(campaignStats?.playerStats || {})
+            .map(([statsKey, stats]) => ({ ...stats, statsKey }))
             .sort((a, b) => b.assists - a.assists || b.goals - a.goals)
             .slice(0, 5);
     }, [campaignStats]);
 
     const mvp = useMemo(() => {
-        return Object.values(campaignStats?.playerStats || {})
+        return Object.entries(campaignStats?.playerStats || {})
+            .map(([statsKey, stats]) => ({ ...stats, statsKey }))
             .sort((a, b) => (b.goals + b.assists) - (a.goals + a.assists))[0];
     }, [campaignStats]);
 
@@ -46,6 +50,11 @@ export function EndScreen({ isChampion, userTeam, campaignStats, onResetDraft }:
             return weightA - weightB;
         });
     }, [userTeam.players]);
+
+    // Mapeamento em Set O(1) de todas as statsKeys que pertencem ao usuário
+    const myStatsKeys = useMemo(() => {
+        return new Set(userTeam.players.map(player => `${userTeam.id}_${player.id}`));
+    }, [userTeam]);
 
     const history = campaignStats?.history || [];
 
@@ -85,10 +94,10 @@ export function EndScreen({ isChampion, userTeam, campaignStats, onResetDraft }:
                     <h2 className="text-xl sm:text-2xl font-black text-white uppercase italic tracking-tight">Esquadrão Final</h2>
                     <div className="h-px flex-1 bg-white/10" />
                 </div>
-                {/* Modificado para grid-cols-2 no mobile mantendo sm:grid-cols-2 e lg:grid-cols-4 intactos */}
                 <div className="grid grid-cols-2 sm:grid-cols-2 lg:grid-cols-4 gap-4 sm:gap-8">
                     {orderedPlayers.map((player) => {
-                        const stats = campaignStats?.playerStats?.[player.id] || { goals: 0, assists: 0 };
+                        const statsKey = `${userTeam.id}_${player.id}`;
+                        const stats = campaignStats?.playerStats?.[statsKey] || { goals: 0, assists: 0 };
                         return (
                             <div key={player.id} className="flex flex-col items-center gap-3 sm:gap-4 group bg-white/[0.01] sm:bg-transparent p-2 sm:p-0 rounded-2xl border border-white/5 sm:border-none">
                                 <div className="w-full max-w-[145px] sm:max-w-[220px] transition-transform group-hover:scale-105 duration-500">
@@ -130,15 +139,29 @@ export function EndScreen({ isChampion, userTeam, campaignStats, onResetDraft }:
                             <span className="w-1.5 h-5 sm:h-6 bg-gold rounded-full" /> Top 5 Artilheiros
                         </h3>
                         <div className="space-y-1.5 sm:space-y-2">
-                            {topScorers.map((p, i) => (
-                                <div key={p.playerId} className="flex items-center justify-between p-2.5 sm:p-3 rounded-xl bg-white/[0.02] border border-white/5">
-                                    <div className="flex items-center gap-2.5 sm:gap-3 min-w-0">
-                                        <span className="text-[11px] sm:text-xs font-black text-faint w-4 sm:w-5 shrink-0">{i + 1}</span>
-                                        <span className="text-xs sm:text-sm font-bold text-white uppercase tracking-tight truncate">{p.playerName}</span>
+                            {topScorers.map((p, i) => {
+                                // Verifica usando a statsKey direta e eficiente
+                                const isMyPlayer = myStatsKeys.has(p.statsKey);
+
+                                return (
+                                    <div key={p.statsKey} className={`flex items-center justify-between p-2.5 sm:p-3 rounded-xl border transition-all ${isMyPlayer
+                                        ? "bg-gold/10 border-gold/40 shadow-[0_0_15px_rgba(255,179,0,0.15)] scale-[1.02]"
+                                        : "bg-white/[0.02] border-white/5"
+                                        }`}>
+                                        <div className="flex items-center gap-2.5 sm:gap-3 min-w-0">
+                                            <span className={`text-[11px] sm:text-xs font-black w-4 sm:w-5 shrink-0 ${isMyPlayer ? "text-gold" : "text-faint"}`}>
+                                                {i + 1}
+                                            </span>
+                                            <span className={`text-xs sm:text-sm font-bold uppercase tracking-tight truncate ${isMyPlayer ? "text-gold" : "text-white"}`}>
+                                                {p.playerName}
+                                            </span>
+                                        </div>
+                                        <span className={`text-xs sm:text-sm font-black tabular-nums shrink-0 ${isMyPlayer ? "text-gold drop-shadow-md" : "text-gold/80"}`}>
+                                            {p.goals} Gols
+                                        </span>
                                     </div>
-                                    <span className="text-xs sm:text-sm font-black text-gold tabular-nums shrink-0">{p.goals} Gols</span>
-                                </div>
-                            ))}
+                                );
+                            })}
                         </div>
                     </div>
 
@@ -150,15 +173,29 @@ export function EndScreen({ isChampion, userTeam, campaignStats, onResetDraft }:
                             <span className="w-1.5 h-5 sm:h-6 bg-blue-400 rounded-full" /> Top 5 Garçons
                         </h3>
                         <div className="space-y-1.5 sm:space-y-2">
-                            {topAssisters.map((p, i) => (
-                                <div key={p.playerId} className="flex items-center justify-between p-2.5 sm:p-3 rounded-xl bg-white/[0.02] border border-white/5">
-                                    <div className="flex items-center gap-2.5 sm:gap-3 min-w-0">
-                                        <span className="text-[11px] sm:text-xs font-black text-faint w-4 sm:w-5 shrink-0">{i + 1}</span>
-                                        <span className="text-xs sm:text-sm font-bold text-white uppercase tracking-tight truncate">{p.playerName}</span>
+                            {topAssisters.map((p, i) => {
+                                // Verifica usando a statsKey direta e eficiente
+                                const isMyPlayer = myStatsKeys.has(p.statsKey);
+
+                                return (
+                                    <div key={p.statsKey} className={`flex items-center justify-between p-2.5 sm:p-3 rounded-xl border transition-all ${isMyPlayer
+                                        ? "bg-blue-500/10 border-blue-400/40 shadow-[0_0_15px_rgba(96,165,250,0.15)] scale-[1.02]"
+                                        : "bg-white/[0.02] border-white/5"
+                                        }`}>
+                                        <div className="flex items-center gap-2.5 sm:gap-3 min-w-0">
+                                            <span className={`text-[11px] sm:text-xs font-black w-4 sm:w-5 shrink-0 ${isMyPlayer ? "text-blue-400" : "text-faint"}`}>
+                                                {i + 1}
+                                            </span>
+                                            <span className={`text-xs sm:text-sm font-bold uppercase tracking-tight truncate ${isMyPlayer ? "text-blue-400" : "text-white"}`}>
+                                                {p.playerName}
+                                            </span>
+                                        </div>
+                                        <span className={`text-xs sm:text-sm font-black tabular-nums shrink-0 ${isMyPlayer ? "text-blue-400 drop-shadow-md" : "text-blue-400/80"}`}>
+                                            {p.assists} Ast
+                                        </span>
                                     </div>
-                                    <span className="text-xs sm:text-sm font-black text-blue-400 tabular-nums shrink-0">{p.assists} Ast</span>
-                                </div>
-                            ))}
+                                );
+                            })}
                         </div>
                     </div>
                 </div>
@@ -188,13 +225,33 @@ export function EndScreen({ isChampion, userTeam, campaignStats, onResetDraft }:
                                         </div>
                                         {h.highlights.length > 0 && (
                                             <div className="flex flex-wrap gap-1.5 pt-3 border-t border-white/5">
-                                                {h.highlights.map((ev, idx) => (
-                                                    <div key={idx} className="flex items-center gap-1 px-2 py-0.5 bg-white/5 rounded-full border border-white/5">
-                                                        <span className="text-[10px] sm:text-xs">{ev.type === 'GOAL' ? '⚽' : '🟥'}</span>
-                                                        <span className="text-[9px] sm:text-[10px] font-bold text-white uppercase tracking-tighter truncate max-w-[80px] sm:max-w-[100px]">{ev.playerName}</span>
-                                                        <span className="text-[8px] sm:text-[9px] font-black text-faint">{ev.minute}'</span>
-                                                    </div>
-                                                ))}
+                                                {h.highlights.map((ev, idx) => {
+                                                    const isGoal = ev.type === 'GOAL';
+                                                    const isOwnGoal = ev.type === 'OWN_GOAL';
+
+                                                    return (
+                                                        <div
+                                                            key={idx}
+                                                            className={`flex items-center gap-1 px-2 py-0.5 rounded-full border ${isOwnGoal
+                                                                ? "bg-red-500/10 border-red-500/20 shadow-[0_0_10px_rgba(239,68,68,0.05)]"
+                                                                : "bg-white/5 border-white/5"
+                                                                }`}
+                                                        >
+                                                            <span className="text-[10px] sm:text-xs">
+                                                                {isGoal || isOwnGoal ? '⚽' : '🟥'}
+                                                            </span>
+                                                            <span className="text-[9px] sm:text-[10px] font-bold text-white uppercase tracking-tighter truncate max-w-[90px] sm:max-w-[120px]">
+                                                                {ev.playerName}
+                                                                {isOwnGoal && (
+                                                                    <span className="text-red-400 text-[8px] font-extrabold lowercase ml-1 tracking-normal">
+                                                                        (gc)
+                                                                    </span>
+                                                                )}
+                                                            </span>
+                                                            <span className="text-[8px] sm:text-[9px] font-black text-faint">{ev.minute}&apos;</span>
+                                                        </div>
+                                                    );
+                                                })}
                                             </div>
                                         )}
                                     </div>
