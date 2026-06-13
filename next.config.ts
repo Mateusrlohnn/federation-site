@@ -11,6 +11,23 @@ const nextConfig: NextConfig = {
   images: {
     qualities: [75, 100],
   },
+  // Headers de segurança aplicados a todas as rotas.
+  async headers() {
+    return [
+      {
+        source: "/:path*",
+        headers: [
+          // Impede que o site seja embutido em <iframe> de outros domínios
+          // (defesa contra clickjacking).
+          { key: "X-Frame-Options", value: "SAMEORIGIN" },
+          // Impede o navegador de "adivinhar" tipos de arquivo (MIME sniffing).
+          { key: "X-Content-Type-Options", value: "nosniff" },
+          // Não vaza a URL completa de origem para outros sites.
+          { key: "Referrer-Policy", value: "strict-origin-when-cross-origin" },
+        ],
+      },
+    ];
+  },
 };
 
 export default nextConfig;
