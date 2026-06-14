@@ -5,6 +5,7 @@ export function mapDraftPlayerToTournament(p: DraftPlayer): TournamentPlayer {
     return {
         id: p.id,
         name: p.name,
+        nick: p.hofData?.nick || p.name,
         position: p.position as Position,
         overall: p.overall,
         avatar: p.avatar,

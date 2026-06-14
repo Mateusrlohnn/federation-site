@@ -113,7 +113,7 @@ export function TeamSelectionArea({
 
               <div className="w-full transition-transform duration-300 group-hover:scale-[1.04]">
                 <FifaCard
-                  player={player.hofData}
+                  player={player.hofData || player.name}
                   overall={player.overall}
                   label=""
                   isAuge={true}
