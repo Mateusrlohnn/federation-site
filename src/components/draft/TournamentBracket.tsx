@@ -35,6 +35,7 @@ export function TournamentBracket({ state, onMatchClick }: TournamentBracketProp
                     <div className={`flex justify-between items-center gap-3 ${match.winnerTeamId && match.winnerTeamId !== match.homeTeamId ? "opacity-30" : ""}`}>
                         <div className="flex items-center gap-2 overflow-hidden">
                             {match.homeTeam?.logo ? (
+                                // eslint-disable-next-line @next/next/no-img-element
                                 <img
                                     src={match.homeTeam.logo}
                                     alt=""
@@ -55,6 +56,7 @@ export function TournamentBracket({ state, onMatchClick }: TournamentBracketProp
                     <div className={`flex justify-between items-center gap-3 ${match.winnerTeamId && match.winnerTeamId !== match.awayTeamId ? "opacity-30" : ""}`}>
                         <div className="flex items-center gap-2 overflow-hidden">
                             {match.awayTeam?.logo ? (
+                                // eslint-disable-next-line @next/next/no-img-element
                                 <img
                                     src={match.awayTeam.logo}
                                     alt=""

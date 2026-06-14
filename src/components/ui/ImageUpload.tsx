@@ -99,7 +99,8 @@ export default function ImageUpload({
       }
 
       setGalleryImages(allFiles);
-    } catch (e: any) {
+    // eslint-disable-next-line @typescript-eslint/no-unused-vars
+    } catch (e: unknown) {
       setErr("Erro ao carregar biblioteca de mídia.");
     } finally {
       setLoadingGallery(false);

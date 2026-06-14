@@ -21,7 +21,7 @@ export default function DraftView({
     id: crypto.randomUUID(),
     name: "Draft Rebug FC",
     season: "Temporada 2026",
-    logoUrl: "",
+    logoUrl: "https://fvswzcifknoaietyekau.supabase.co/storage/v1/object/public/media/draft-teams/ebe42394-b3db-4e6e-9066-d4e9a3f7d82e.png",
     players: Object.values(pickedPlayers).filter(
       (p): p is NonNullable<typeof p> => Boolean(p)
     ),

@@ -410,6 +410,7 @@ export function LiveMatchHub({ teamA, teamB, onFinished }: LiveMatchHubProps) {
                                     {/* Jogadores Titulares dispostos taticamente */}
                                     <div className="relative h-full flex flex-col justify-around py-2 px-2">
                                         {positionsOrder.map((pos) => {
+                                            {console.log("Tactical B", tacticalB)} // Debug para verificar a estrutura de tacticalB
                                             const playersInRow = tacticalB[pos];
                                             return (
                                                 <div key={pos} className="flex justify-center items-center h-1/4 w-full gap-2 px-1">

@@ -21,6 +21,7 @@ export type MatchEventType =
 export interface TournamentPlayer {
     id: string;
     name: string;
+    nick: string;
     position: Position;
     overall: number;
     avatar?: string;

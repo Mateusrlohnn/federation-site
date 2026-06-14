@@ -3,8 +3,6 @@
 import { useCallback, useEffect, useState } from "react";
 import { createClient } from "@/lib/supabase/client";
 import { MEDIA_BUCKET } from "@/lib/storage";
-import Icon from "@/components/ui/Icon";
-import { focusStyle } from "@/lib/imageFocus";
 
 // Tipagem para unificar os arquivos encontrados no Storage
 type StorageFile = {
@@ -73,7 +71,7 @@ export default function AdminImagesPage() {
                         path: path,
                         publicUrl: data.publicUrl,
                         size: file.metadata?.size || 0,
-                        created_at: file.created_at,
+                        created_at: file.created_at || "",
                     });
                 }
             }
@@ -113,8 +111,8 @@ export default function AdminImagesPage() {
             });
 
             setUsages(usageMap);
-        } catch (e: any) {
-            setErr(e.message || "Erro ao carregar imagens.");
+        } catch (e: unknown) {
+            setErr((e as Error).message || "Erro ao carregar imagens.");
         } finally {
             setBusy(false);
         }
