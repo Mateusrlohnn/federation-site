@@ -13,7 +13,7 @@ interface DraftViewProps {
 export default function DraftView({
   onFinishDraft,
 }: DraftViewProps) {
-  const { currentTeam, pickedPlayers, step, isComplete, pickPlayer, resetDraft } = useDraft();
+  const { currentTeam, pickedPlayers, step, isComplete, pickPlayer, resetDraft, rerollTeam } = useDraft();
 
   const players = Object.values(pickedPlayers).filter(Boolean);
 
@@ -32,6 +32,7 @@ export default function DraftView({
     const sum = players.reduce((acc, p) => acc + (p?.overall || 0), 0);
     return Math.round(sum / players.length);
   };
+  
 
   // ==========================================
   // ESTADO: DRAFT FINALIZADO (MÁXIMA CONSISTÊNCIA VISUAL)
@@ -185,6 +186,7 @@ export default function DraftView({
               currentTeam={currentTeam}
               pickedPlayers={pickedPlayers}
               onPick={pickPlayer}
+              onReroll={rerollTeam}
             />
           </div>
 
