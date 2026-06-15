@@ -20,6 +20,7 @@ interface DraftContextType {
   isComplete: boolean;
   pickPlayer: (player: DraftPlayer) => void;
   resetDraft: () => void;
+  rerollTeam: () => void;
 }
 
 const DraftContext = createContext<DraftContextType | undefined>(undefined);
@@ -48,10 +49,6 @@ export function DraftProvider({
   const [currentTeam, setCurrentTeam] = useState<DraftTeam | null>(null);
   const [step, setStep] = useState(0);
 
-  // BUG FIX #8: O ref de controle anterior era manipulado de forma confusa no
-  // resetDraft (setando false e logo em seguida true de forma síncrona, sem o
-  // useEffect realmente re-executar entre os dois sets). Simplificado: o ref só
-  // serve para garantir que o roll inicial roda uma única vez na montagem.
   const initialRollDone = useRef(false);
 
   useEffect(() => {
@@ -71,10 +68,8 @@ export function DraftProvider({
 
       const playerPos = player.position;
 
-      // Posição já preenchida
       if (pickedPlayers[playerPos]) return;
 
-      // Unicidade por ID
       const isAlreadyPicked = Object.values(pickedPlayers).some(p => p?.id === player.id);
       if (isAlreadyPicked) return;
 
@@ -84,11 +79,9 @@ export function DraftProvider({
       setStep(nextStep);
 
       if (nextStep < 4) {
-        // Rola próximo time sem repetir
         const available = initialTeams.filter(
           t => !usedTeamIds.includes(t.id) && (t as any).active !== false
         );
-        // Se esgotou os times únicos, repete o pool completo
         const pool = available.length > 0 ? available : initialTeams.filter(t => (t as any).active !== false);
         const nextTeam = pickRandom(pool);
         if (nextTeam) {
@@ -100,9 +93,26 @@ export function DraftProvider({
     [pickedPlayers, step, usedTeamIds, initialTeams],
   );
 
-  // BUG FIX #9: resetDraft agora faz tudo de forma direta e síncrona sem
-  // precisar resetar o ref (que não serve para nada no reset, pois o useEffect
-  // de montagem não re-executa depois do primeiro render de qualquer forma).
+  const rerollTeam = useCallback(() => {
+    if (step >= 4 || !currentTeam) return;
+
+    const available = initialTeams.filter(
+      t => !usedTeamIds.includes(t.id) && (t as any).active !== false
+    );
+
+    const pool = available.length > 0
+      ? available
+      : initialTeams.filter(t => (t as any).active !== false && t.id !== currentTeam.id);
+
+    const finalPool = pool.length > 0 ? pool : initialTeams.filter(t => (t as any).active !== false);
+
+    const nextTeam = pickRandom(finalPool);
+    if (nextTeam) {
+      setCurrentTeam(nextTeam);
+      setUsedTeamIds(prev => [...prev, nextTeam.id]);
+    }
+  }, [currentTeam, step, usedTeamIds, initialTeams]);
+
   const resetDraft = useCallback(() => {
     setPickedPlayers({});
     setStep(0);
@@ -129,8 +139,9 @@ export function DraftProvider({
       isComplete,
       pickPlayer,
       resetDraft,
+      rerollTeam,
     }),
-    [initialTeams, currentTeam, pickedPlayers, usedTeamIds, step, isComplete, pickPlayer, resetDraft],
+    [initialTeams, currentTeam, pickedPlayers, usedTeamIds, step, isComplete, pickPlayer, resetDraft, rerollTeam],
   );
 
   return <DraftContext.Provider value={value}>{children}</DraftContext.Provider>;

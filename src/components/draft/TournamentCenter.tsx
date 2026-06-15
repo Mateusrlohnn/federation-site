@@ -28,7 +28,15 @@ export function TournamentCenter({ userTeam, iaTeams, onResetDraft }: Tournament
     useEffect(() => {
         if (!tournament) {
             const userTournamentTeam = mapDraftTeamToTournament(userTeam, true);
-            const iaTournamentTeams = iaTeams.slice(0, 7).map(t => mapDraftTeamToTournament(t));
+
+            // 1. Filtra para não duplicar o time do usuário e embaralha a lista de IA
+            const randomizedIa = [...iaTeams]
+                .filter(t => t.id !== userTeam.id)
+                .sort(() => Math.random() - 0.5);
+
+            // 2. Agora sim, pega os 7 primeiros times já randomizados
+            const iaTournamentTeams = randomizedIa.slice(0, 7).map(t => mapDraftTeamToTournament(t));
+
             const allTeams = [userTournamentTeam, ...iaTournamentTeams];
             let state = createTournament(allTeams, userTournamentTeam.id);
             state = autoSimulateAIMatches(state);
@@ -42,9 +50,6 @@ export function TournamentCenter({ userTeam, iaTeams, onResetDraft }: Tournament
         return allMatches.find(m => m.status === "ready" && m.isUserMatch) ?? null;
     }, [tournament]);
 
-    // BUG FIX #6: Separar as verificações de eliminação e fim de torneio evita
-    // que a fase "FINISHED" seja pulada quando o torneio termina sem o usuário
-    // estar na final (campeão diferente do usuário após Grand Final simulada por AI).
     useEffect(() => {
         if (!tournament || phase === "PLAYING_USER_MATCH") return;
 
@@ -76,24 +81,14 @@ export function TournamentCenter({ userTeam, iaTeams, onResetDraft }: Tournament
         setPhase("IDLE");
     };
 
-    // BUG FIX #7: A implementação anterior manipulava `isUserMatch` diretamente
-    // no clone, mas `activateMatch` (chamado dentro de `advanceBracket`) recalcula
-    // `isUserMatch` pelo `userTeamId`, sobrescrevendo a alteração. 
-    // A solução correta é que `autoSimulateAIMatches` já respeita `isUserMatch`
-    // naturalmente — ela só simula partidas onde `isUserMatch === false`.
-    // Para forçar a simulação do restante quando o usuário foi eliminado, basta
-    // criar um state temporário onde o userTeamId não existe em nenhuma partida
-    // ativa, fazendo todas as partidas restantes serem tratadas como AI.
     const handleAutoSimulateRest = () => {
         if (!tournament) return;
-        // Cria um clone "sem usuário" para que autoSimulateAIMatches processe tudo
         const ghostState: TournamentState = structuredClone(tournament);
-        ghostState.userTeamId = "__none__"; // Nenhuma partida vai ter isUserMatch=true
+        ghostState.userTeamId = "__none__";
         [...ghostState.upperBracket, ...ghostState.lowerBracket, ghostState.grandFinal].forEach(m => {
             m.isUserMatch = false;
         });
         const simulated = autoSimulateAIMatches(ghostState);
-        // Restaura o userTeamId original para o histórico e a tela final ficarem corretos
         simulated.userTeamId = tournament.userTeamId;
         setTournament(simulated);
     };
