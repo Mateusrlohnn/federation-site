@@ -13,7 +13,7 @@ interface DraftViewProps {
 export default function DraftView({
   onFinishDraft,
 }: DraftViewProps) {
-  const { currentTeam, pickedPlayers, step, isComplete, pickPlayer, resetDraft } = useDraft();
+  const { currentTeam, pickedPlayers, step, isComplete, pickPlayer, resetDraft, rerollTeam } = useDraft();
 
   const players = Object.values(pickedPlayers).filter(Boolean);
 
@@ -21,7 +21,7 @@ export default function DraftView({
     id: crypto.randomUUID(),
     name: "Draft Rebug FC",
     season: "Temporada 2026",
-    logoUrl: "",
+    logoUrl: "https://fvswzcifknoaietyekau.supabase.co/storage/v1/object/public/media/draft-teams/ebe42394-b3db-4e6e-9066-d4e9a3f7d82e.png",
     players: Object.values(pickedPlayers).filter(
       (p): p is NonNullable<typeof p> => Boolean(p)
     ),
@@ -32,6 +32,7 @@ export default function DraftView({
     const sum = players.reduce((acc, p) => acc + (p?.overall || 0), 0);
     return Math.round(sum / players.length);
   };
+  
 
   // ==========================================
   // ESTADO: DRAFT FINALIZADO (MÁXIMA CONSISTÊNCIA VISUAL)
@@ -185,6 +186,7 @@ export default function DraftView({
               currentTeam={currentTeam}
               pickedPlayers={pickedPlayers}
               onPick={pickPlayer}
+              onReroll={rerollTeam}
             />
           </div>
 

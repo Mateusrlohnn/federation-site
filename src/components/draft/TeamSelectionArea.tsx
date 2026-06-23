@@ -9,6 +9,7 @@ interface TeamSelectionAreaProps {
   currentTeam: DraftTeam | null;
   pickedPlayers: DraftSelection;
   onPick: (player: DraftPlayer) => void;
+  onReroll: () => void;
 }
 
 const POSITIONS_ORDER: Position[] = ["GK", "ZAG", "MID", "ATK"];
@@ -17,6 +18,7 @@ export function TeamSelectionArea({
   currentTeam,
   pickedPlayers,
   onPick,
+  onReroll,
 }: TeamSelectionAreaProps) {
   if (!currentTeam) {
     return (
@@ -32,6 +34,13 @@ export function TeamSelectionArea({
       .map((p) => p!.id),
   );
 
+  // DETECTOR DE BUG/TRAVAMENTO: Verifica se TODOS os jogadores do time atual estão desabilitados
+  const isTeamLocked = currentTeam.players.every((player) => {
+    const isAlreadyPicked = alreadyPickedIds.has(player.id);
+    const isPositionFilled = !!pickedPlayers[player.position];
+    return isAlreadyPicked || isPositionFilled;
+  });
+
   return (
     <div className="flex flex-col gap-8 w-full animate-content-in">
       {/* Time Sorteado Header */}
@@ -41,6 +50,7 @@ export function TeamSelectionArea({
         <div className="relative z-10 flex items-center gap-6">
           <div className="w-16 h-16 bg-white/5 rounded-2xl p-3 border border-white/10 flex items-center justify-center">
             {currentTeam.logoUrl ? (
+              // eslint-disable-next-line @next/next/no-img-element
               <img src={currentTeam.logoUrl} alt="" className="w-full h-full object-contain drop-shadow-lg" />
             ) : (
               <span className="text-2xl">🛡️</span>
@@ -61,23 +71,38 @@ export function TeamSelectionArea({
           </div>
         </div>
 
-        <div className="relative z-10 flex flex-col md:items-end">
-          <span className="text-[9px] font-black text-faint uppercase tracking-[0.3em] mb-1">
-            Status do Draft
-          </span>
-          <div className="flex items-center gap-2">
-            {POSITIONS_ORDER.map(pos => (
-              <div
-                key={pos}
-                className={`text-[10px] font-black px-2 py-1 rounded border transition-all ${pickedPlayers[pos]
-                  ? "bg-green-500/20 border-green-500/30 text-green-400"
-                  : "bg-white/5 border-white/10 text-white/20"
-                  }`}
-              >
-                {pos}
-              </div>
-            ))}
+        {/* Lado Direito do Header (Status + Botão de Roletar Condicional) */}
+        <div className="relative z-10 flex flex-col md:items-end gap-3">
+          <div>
+            <span className="text-[9px] font-black text-faint uppercase tracking-[0.3em] mb-1 block md:text-right">
+              Status do Draft
+            </span>
+            <div className="flex items-center gap-2">
+              {POSITIONS_ORDER.map(pos => (
+                <div
+                  key={pos}
+                  className={`text-[10px] font-black px-2 py-1 rounded border transition-all ${pickedPlayers[pos]
+                    ? "bg-green-500/20 border-green-500/30 text-green-400"
+                    : "bg-white/5 border-white/10 text-white/20"
+                    }`}
+                >
+                  {pos}
+                </div>
+              ))}
+            </div>
           </div>
+
+          {/* O BOTÃO SÓ É RENDERIZADO SE O TIME ESTIVER TRAVADO (isTeamLocked === true) */}
+          {isTeamLocked && (
+            <button
+              type="button"
+              onClick={onReroll}
+              className="text-[10px] font-black px-4 py-2 rounded-xl border uppercase tracking-wider transition-all duration-300 flex items-center gap-2 shadow-md bg-amber-500 text-black border-amber-400 animate-pulse shadow-[0_0_15px_rgba(245,158,11,0.4)]"
+            >
+              <span>🔄</span>
+              Roletar outro time
+            </button>
+          )}
         </div>
       </div>
 
@@ -91,6 +116,7 @@ export function TeamSelectionArea({
           return (
             <button
               key={player.id}
+              type="button"
               onClick={() => !isDisabled && onPick(player)}
               disabled={isDisabled}
               className={`relative flex flex-col items-center w-full max-w-[200px] transition-all duration-500 group
@@ -99,7 +125,7 @@ export function TeamSelectionArea({
             >
               {/* Badge: Já Selecionado */}
               {isAlreadyPicked && (
-                <div className="absolute top-4 left-1/2 -translate-x-1/2 z-30 bg-gold text-black text-[9px] font-black uppercase px-3 py-1 rounded-full shadow-2xl border border-black/10 animate-bounce-in">
+                <div className="absolute top-4 left-1/2 -translate-x-1/2 z-30 bg-gold text-black text-[9px] font-black uppercase px-3 py-1 rounded-full shadow-2xl border border-black/10">
                   Já Selecionado
                 </div>
               )}
@@ -113,7 +139,7 @@ export function TeamSelectionArea({
 
               <div className="w-full transition-transform duration-300 group-hover:scale-[1.04]">
                 <FifaCard
-                  player={player.hofData}
+                  player={player.hofData || player.name}
                   overall={player.overall}
                   label=""
                   isAuge={true}
