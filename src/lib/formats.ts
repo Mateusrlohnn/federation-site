@@ -643,10 +643,10 @@ export function buildSwissBracket(teamIds: string[], matches: MatchLike[]): Swis
   teamIds.forEach((id) => rec.set(id, { w: 0, l: 0 }));
 
   // reconstrói as rodadas processando as partidas em ordem cronológica
-  const finals = matches
-    .filter((m) => isFinal(m) && set.has(m.homeTeamId as string) && set.has(m.awayTeamId as string))
-    .slice()
-    .sort((a, b) => (a.playedAt ?? "").localeCompare(b.playedAt ?? ""));
+  // (mesma ordem estável do resto do modelo: playedAt → createdAt → inserção)
+  const finals = finalsByDate(matches).filter(
+    (m) => set.has(m.homeTeamId as string) && set.has(m.awayTeamId as string),
+  );
 
   const cols = new Map<string, BracketMatch[]>();
   const keyOf = (w: number, l: number) => `${w}-${l}`;
@@ -748,9 +748,14 @@ export function splitSwissFinalMatches(
 }
 
 /**
- * Chave da FASE FINAL do suíço (Semifinais + Final). Cruza os INVICTOS (sem
- * derrotas) com os RECUPERADOS (com derrota), EVITANDO revanches do suíço: cada
- * invicto pega um recuperado que ainda não enfrentou. Vagas indefinidas = null.
+ * Chave da FASE FINAL do suíço (Semifinais + Final).
+ *
+ * O sorteio das semifinais é DECISÃO DO ADMIN (feito fora da plataforma): por
+ * isso o chaveamento espelha os confrontos REALMENTE lançados. Cada jogo da fase
+ * final entre dois classificados (em ordem cronológica, cada time usado só uma
+ * vez) é uma semifinal; o confronto restante, entre os dois vencedores, é a
+ * final. Enquanto uma semi não foi lançada, sugere-se um cruzamento invicto ×
+ * recuperado (evitando revanche do suíço) apenas como placeholder "A definir".
  * Os placares vêm SÓ dos jogos da fase final — nunca de um jogo do suíço.
  */
 export function buildSwissFinal(
@@ -760,16 +765,42 @@ export function buildSwissFinal(
   swissPlayed: Set<string>,
 ): BracketRound[] {
   const slots = Math.max(invictos.length, recuperados.length, 1);
-  const rec: (string | null)[] = [...recuperados];
+  const classified = new Set([...invictos, ...recuperados]);
+
+  // 1) SEMIS REAIS (sorteio manual): confrontos da fase final entre dois times
+  //    classificados, em ordem cronológica e com cada time usado uma única vez.
+  //    O chaveamento reflete EXATAMENTE o que o admin lançou — sem impor um
+  //    cruzamento automático. O confronto restante fica para a final.
+  const used = new Set<string>();
   const semiPairs: { home: string | null; away: string | null }[] = [];
-  for (let i = 0; i < slots; i++) {
-    const home = invictos[i] ?? null;
-    // recuperado ainda não enfrentado por este invicto (senão, o 1º livre)
-    let idx = home ? rec.findIndex((r) => r != null && !swissPlayed.has(pairKey(home, r))) : -1;
-    if (idx === -1) idx = rec.findIndex((r) => r != null);
-    const away = idx >= 0 ? rec.splice(idx, 1)[0] ?? null : null;
+  for (const m of finalsByDate(finalMatches)) {
+    if (semiPairs.length >= slots) break;
+    const h = m.homeTeamId as string;
+    const a = m.awayTeamId as string;
+    if (!classified.has(h) || !classified.has(a)) continue;
+    if (used.has(h) || used.has(a)) continue;
+    semiPairs.push({ home: h, away: a });
+    used.add(h);
+    used.add(a);
+  }
+
+  // 2) SLOTS AINDA VAZIOS (semi não lançada): cruzamento sugerido invicto ×
+  //    recuperado ainda livre, evitando revanche do suíço — só placeholder.
+  const freeInv = invictos.filter((t) => !used.has(t));
+  const freeRec = recuperados.filter((t) => !used.has(t));
+  while (semiPairs.length < slots && (freeInv.length || freeRec.length)) {
+    const home = freeInv.shift() ?? null;
+    let away: string | null = null;
+    if (home) {
+      let idx = freeRec.findIndex((r) => !swissPlayed.has(pairKey(home, r)));
+      if (idx === -1 && freeRec.length) idx = 0;
+      away = idx >= 0 ? freeRec.splice(idx, 1)[0] ?? null : null;
+    } else {
+      away = freeRec.shift() ?? null;
+    }
     semiPairs.push({ home, away });
   }
+
   const mk = (home: string | null, away: string | null): BracketMatch => {
     let homeScore: number | null = null;
     let awayScore: number | null = null;
@@ -815,11 +846,11 @@ export function swissMatchesByRecord(
   };
   const keyOf = (id: string) => `${rec.get(id)!.w}-${rec.get(id)!.l}`;
 
-  // finalizadas em ordem cronológica (reconstrói o recorde de entrada)
-  const finals = matches
-    .filter((m) => isFinal(m) && set.has(m.homeTeamId as string) && set.has(m.awayTeamId as string))
-    .slice()
-    .sort((a, b) => (a.playedAt ?? "").localeCompare(b.playedAt ?? ""));
+  // finalizadas em ordem cronológica (reconstrói o recorde de entrada) — mesma
+  // ordem estável do resto do modelo: playedAt → createdAt → inserção.
+  const finals = finalsByDate(matches).filter(
+    (m) => set.has(m.homeTeamId as string) && set.has(m.awayTeamId as string),
+  );
   for (const m of finals) {
     const h = m.homeTeamId as string;
     const a = m.awayTeamId as string;
